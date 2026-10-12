@@ -100,6 +100,9 @@ const STYLE = `
   .alert .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
   .offline .head .icon { color: var(--disabled-color, #9e9e9e); background: rgba(127,127,127,.15); }
   .burning #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+  /* Falling water while the boiler runs for the shower. Not over a fault or
+     pressure icon: those states keep their own static icon. */
+  .dhw:not(.fault):not(.alert) #flame { animation: shower 0.7s ease-out infinite; }
   .htext { flex: 1; min-width: 0; cursor: pointer; }
   .title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
   .winner { font-size: 18px; font-weight: 600; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -152,6 +155,10 @@ const STYLE = `
   .row.unavailable { opacity: .45; }
   .empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
 
+  @keyframes shower {
+    0%   { clip-path: inset(0 0 45% 0); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .75; } }
   @keyframes flicker {
     0%   { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
@@ -161,7 +168,7 @@ const STYLE = `
     80%  { transform: rotate(-1.8deg) scaleY(.97);  opacity: .85;}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
-  @media (prefers-reduced-motion: reduce) { .burning #flame, #fault { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault { animation: none; } }
   @media (max-width: 360px) { .row { gap: 4px; } .rcur { min-width: 38px; } }
 `;
 
@@ -367,7 +374,7 @@ class HeatingControlCard extends HTMLElement {
     else if (lowP || highP) icon = "mdi:fire-alert";
     else if (heating) icon = "mdi:fire";
     else if (pumping) icon = "mdi:pump";
-    else if (dhw) icon = "mdi:water-boiler";
+    else if (dhw) icon = "mdi:shower-head";
     e.flame.setAttribute("icon", icon);
     this._iconTarget = offline ? c.boiler : fault ? c.fault : dhw ? c.hot_water : c.flame && flameState ? c.flame : c.boiler;
 

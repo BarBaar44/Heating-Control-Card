@@ -12,7 +12,7 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
   | any | on | any | boiler on for hot water |
   | off | off | off | boiler idle |
 
-  The flame flickers only while the burner fires for heating. Without a flame entity, CH active counts as heating.
+  The flame flickers only while the burner fires for heating. During a hot water run the header shows a blue shower head with falling water. Both animations stop when the system asks for reduced motion. Without a flame entity, CH active counts as heating.
 * **Thermostat offline:** when the CH active or flame entity is unavailable or unknown (the ESPHome thermostat reboots or loses its connection), the header says "Thermostat offline" with a grey icon instead of guessing. The rows keep working; the virtual thermostats live in HA itself.
 * **Boiler fault:** when `binary_sensor.main_thermostat_fault_indication` is on, the card gets a red border, a pulsing red "Boiler fault" banner on top and a red header. Tap the banner for the fault sensor. OpenTherm only sends one general fault bit, not the code on the boiler display (such as C1 51), so the card tells you to check the display and does not interpret anything.
 * **Rooms:** one row per `climate.virtual_thermostat_*` with room temperature, target with − and +, and Heat/Off. Each row shows its role in the two-tier model: **Heating** (the winner, highlighted), **Pumping** (the winner while the burner is off), **Heating along** or **Pumping along** (below target while the boiler runs for another room), **Calls for heat**, **Reached**, **Off** or **Paused**.
