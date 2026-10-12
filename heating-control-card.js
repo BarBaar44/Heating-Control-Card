@@ -99,9 +99,10 @@ const STYLE = `
   .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
   .alert .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
   .offline .head .icon { color: var(--disabled-color, #9e9e9e); background: rgba(127,127,127,.15); }
-  .burning #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
-  /* Falling water while the boiler runs for the shower. Not over a fault or
-     pressure icon: those states keep their own static icon. */
+  /* Animations run only while the header shows the flame or shower head:
+     fault and pressure warnings keep their own static icon. Offline never
+     sets burning or dhw. */
+  .burning:not(.fault):not(.alert) #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
   .dhw:not(.fault):not(.alert) #flame { animation: shower 0.7s ease-out infinite; }
   .htext { flex: 1; min-width: 0; cursor: pointer; }
   .title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
