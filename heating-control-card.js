@@ -1,112 +1,143 @@
 /*
  * Heating Control Card
- * One Lovelace card for a room's virtual thermostat and the boiler behind it,
- * built for the multi-room setup in https://github.com/BarBaar44/thermostat
+ * One Lovelace card for every virtual thermostat in the house and the boiler
+ * behind them, built for https://github.com/BarBaar44/thermostat
+ *
+ * Header: the room the boiler is heating for (the Tier 1 winner from
+ * sensor.delta_temperature), its current and target temperature, what the
+ * boiler is doing, schedule and pressure notes.
+ * Rows: one per climate.virtual_thermostat_*, each with room temperature,
+ * target with - and +, Heat/Off, and its role (heating, heating along,
+ * reached, off, paused).
  *
  * What it reads from that backend:
- *  - climate.virtual_thermostat_<room>: the single source of truth for the
- *    room. The card only ever writes here; TRV Setpoint Sync takes it from
- *    there (TRVs, +1 C buffer for the winner, boiler setpoint).
- *  - sensor.delta_temperature: JSON {"area","target","curr","delta"}. The
- *    area is the Tier 1 winner, the room the boiler is currently heating for.
- *    A plain area sensor (e.g. sensor.virtual_heating_area) works too.
+ *  - climate.virtual_thermostat_*: the single source of truth per room. The
+ *    card only ever writes here; TRV Setpoint Sync takes it from there.
+ *  - sensor.delta_temperature: JSON {"area","target","curr","delta"}. A plain
+ *    area sensor (e.g. sensor.virtual_heating_area) works too.
  *  - binary_sensor.main_thermostat_central_heating_active / ..._domestic_hot_
  *    water_active: what the boiler is firing for.
  *  - switch.main_thermostat_central_heating_enabled: owned by the Heating
- *    Schedule. When off, a room in heat gets no heat; the card says so but
- *    never touches the switch.
+ *    Schedule. The card reports it, never touches it.
  *  - input_boolean.garden_heating_paused (living room only): while set, the
- *    pause/resume scripts own the thermostat, so the controls are locked.
+ *    pause/resume scripts own that thermostat, so its row is locked.
  *  - sensor.thermostat_water_pressure_in_ch_circuit: low pressure warning.
+ *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
+ *    When on, the whole card turns red and a banner says so first.
  *
- * Setpoint taps are batched: the card shows the new target at once and
- * sends one climate.set_temperature call 0.8 s after the last tap.
+ * Setpoint taps are batched per room: the new target shows at once and one
+ * climate.set_temperature goes out 0.8 s after the last tap.
  *
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
+const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
+const LIVING_ROOM_PAUSED = "input_boolean.garden_heating_paused";
 
 const DEFAULTS = {
-  name: null,
-  climate: LIVING_ROOM,
+  title: "Heating",
+  // null: every climate.virtual_thermostat_* entity, sorted by name.
+  thermostats: null,
   heating_area: "sensor.delta_temperature",
   boiler: "binary_sensor.main_thermostat_central_heating_active",
   hot_water: "binary_sensor.main_thermostat_domestic_hot_water_active",
   ch_enabled: "switch.main_thermostat_central_heating_enabled",
   pressure: "sensor.thermostat_water_pressure_in_ch_circuit",
   pressure_min: 1.4,
-  // Only defaults for the living room; see setConfig.
-  paused: undefined,
+  fault: "binary_sensor.main_thermostat_fault_indication",
   step: null,
   on_mode: null,
+  show_off: true,
 };
-const LIVING_ROOM_PAUSED = "input_boolean.garden_heating_paused";
 
 const BAD = ["unknown", "unavailable", "none", ""];
-const fmt = (v, d = 1) =>
-  v === undefined || v === null || v === "" || isNaN(Number(v)) ? "--" : Number(v).toFixed(d);
+const num = (v) => (v === undefined || v === null || v === "" || isNaN(Number(v)) ? null : Number(v));
+const fmt = (v, d = 1) => (num(v) === null ? "--" : Number(v).toFixed(d));
+const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 const STYLE = `
-  :host { --hc-heat: var(--state-climate-heat-color, #ff8100); --hc-fire: #ff5722; --hc-dhw: var(--blue-color, #2196f3); }
-  ha-card {
-    padding: 12px; height: 100%; box-sizing: border-box;
-    display: flex; flex-direction: column; gap: 10px; overflow: hidden;
+  :host {
+    --hc-heat: var(--state-climate-heat-color, #ff8100);
+    --hc-fire: #ff5722;
+    --hc-dhw: var(--blue-color, #2196f3);
+    --hc-err: var(--error-color, #db4437);
+    --hc-soft: var(--secondary-background-color, rgba(127,127,127,.15));
   }
+  ha-card { padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
   button {
     border: none; font: inherit; cursor: pointer; padding: 0;
     display: flex; align-items: center; justify-content: center;
     -webkit-tap-highlight-color: transparent;
   }
   button:disabled { opacity: .35; cursor: default; }
-  .top { display: flex; align-items: center; gap: 10px; }
+
+  /* Header */
+  .head { display: flex; align-items: center; gap: 10px; }
   .icon {
-    width: 40px; height: 40px; border-radius: 50%; flex: none;
+    width: 44px; height: 44px; border-radius: 50%; flex: none;
     background: rgba(127,127,127,.15); color: var(--disabled-color, #9e9e9e);
     transition: background .3s, color .3s;
   }
-  .heat .icon { color: var(--hc-heat); background: color-mix(in srgb, var(--hc-heat) 15%, transparent); }
-  .dhw .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
-  .burning .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
-  .alert .icon { color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 20%, transparent); }
-  .info { flex: 1; min-width: 0; cursor: pointer; }
-  .name, .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .name { font-size: 14px; font-weight: 600; color: var(--primary-text-color); }
-  .status { font-size: 12px; color: var(--secondary-text-color); }
-  .mine .status { color: var(--hc-fire); }
-  .mode {
-    width: 36px; height: 36px; border-radius: 50%; flex: none;
-    background: var(--secondary-background-color, rgba(127,127,127,.15));
-    color: var(--secondary-text-color);
-  }
-  .heat .mode { background: var(--hc-heat); color: #fff; }
-  .paused .mode { background: var(--secondary-background-color, rgba(127,127,127,.15)); color: var(--hc-heat); opacity: 1; cursor: pointer; }
-  .bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: auto; }
-  .block { display: flex; flex-direction: column; }
-  .label { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .value { font-size: 24px; font-weight: 600; line-height: 1.1; color: var(--primary-text-color); }
-  .setpoint { display: flex; align-items: center; gap: 6px; }
-  .setpoint .block { align-items: center; min-width: 52px; }
-  .off .setpoint .value, .paused .setpoint .value { opacity: .4; }
-  .pending .setpoint .value { color: var(--hc-heat); opacity: 1; }
-  .adj {
-    width: 34px; height: 34px; border-radius: 10px;
-    background: var(--secondary-background-color, rgba(127,127,127,.15));
-    color: var(--primary-text-color);
-  }
-  .adj:active:not(:disabled) { transform: scale(.92); }
-  .note {
-    display: none; align-items: center; gap: 6px; cursor: pointer;
-    font-size: 12px; padding: 6px 8px; border-radius: 8px;
-  }
+  .dhw .head .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
+  .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
+  .alert .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
+  .burning #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+  .htext { flex: 1; min-width: 0; cursor: pointer; }
+  .title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .winner { font-size: 18px; font-weight: 600; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .burning .winner { color: var(--hc-fire); }
+  .sub { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .note { display: none; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; padding: 6px 8px; border-radius: 8px; }
   .note ha-icon { --mdc-icon-size: 16px; flex: none; }
   .note.show { display: flex; }
-  #warn { color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
-  #info2 { color: var(--secondary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12)); }
-  .unavailable .bottom { opacity: .4; }
-  .burning #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+  #warn { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 12%, transparent); }
+  #fault {
+    display: none; align-items: center; gap: 10px; cursor: pointer;
+    padding: 10px 12px; border-radius: 10px; color: #fff; background: var(--hc-err);
+    font-size: 14px; font-weight: 600; animation: pulse 2s ease-in-out infinite;
+  }
+  #fault ha-icon { --mdc-icon-size: 26px; flex: none; }
+  #fault small { display: block; font-size: 12px; font-weight: 400; opacity: .9; }
+  .fault #fault { display: flex; }
+  ha-card.fault { border: 2px solid var(--hc-err); }
+  .fault .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
+  .fault .winner { color: var(--hc-err); }
+  #sched { color: var(--secondary-text-color); background: var(--hc-soft); }
+
+  /* Rooms */
+  .rooms { display: flex; flex-direction: column; gap: 4px; }
+  .row {
+    display: grid; grid-template-columns: 1fr auto auto 34px; align-items: center; gap: 8px;
+    padding: 6px 6px 6px 10px; border-radius: 12px; border: 1px solid transparent;
+  }
+  .row.win { border-color: color-mix(in srgb, var(--hc-fire) 45%, transparent); background: color-mix(in srgb, var(--hc-fire) 8%, transparent); }
+  .rinfo { min-width: 0; cursor: pointer; }
+  .rname { font-size: 14px; font-weight: 500; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rrole { font-size: 11px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .rrole ha-icon { --mdc-icon-size: 13px; }
+  .row.win .rrole { color: var(--hc-fire); font-weight: 600; }
+  .row.along .rrole { color: var(--hc-heat); }
+  .row.paused .rrole { color: var(--hc-heat); }
+  .rcur { font-size: 15px; font-weight: 500; color: var(--secondary-text-color); min-width: 44px; text-align: right; }
+  .set { display: flex; align-items: center; gap: 2px; }
+  .adj { width: 28px; height: 28px; border-radius: 8px; background: var(--hc-soft); color: var(--primary-text-color); }
+  .adj ha-icon { --mdc-icon-size: 18px; }
+  .adj:active:not(:disabled) { transform: scale(.92); }
+  .rtgt { font-size: 15px; font-weight: 600; min-width: 46px; text-align: center; color: var(--primary-text-color); }
+  .row.off .rtgt, .row.paused .rtgt { opacity: .4; }
+  .row.pending .rtgt { color: var(--hc-heat); opacity: 1; }
+  .mode { width: 32px; height: 32px; border-radius: 50%; background: var(--hc-soft); color: var(--secondary-text-color); }
+  .mode ha-icon { --mdc-icon-size: 18px; }
+  .row.heat .mode { background: var(--hc-heat); color: #fff; }
+  .row.paused .mode { color: var(--hc-heat); opacity: 1; cursor: pointer; }
+  .row.unavailable { opacity: .45; }
+  .empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .75; } }
   @keyframes flicker {
     0%   { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
     20%  { transform: rotate(1.8deg)  scaleY(1.12); opacity: 1;  }
@@ -115,16 +146,16 @@ const STYLE = `
     80%  { transform: rotate(-1.8deg) scaleY(.97);  opacity: .85;}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
-  @media (prefers-reduced-motion: reduce) { .burning #flame { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .burning #flame, #fault { animation: none; } }
+  @media (max-width: 360px) { .row { gap: 4px; } .rcur { min-width: 38px; } }
 `;
 
 class HeatingControlCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._pending = null;
-    this._timer = null;
-    this._clear = null;
+    this._rows = new Map(); // entity_id -> { el, refs, pending, timer, clear }
+    this._rowKey = "";
   }
 
   static getConfigElement() {
@@ -137,10 +168,13 @@ class HeatingControlCard extends HTMLElement {
 
   setConfig(config) {
     const c = { ...DEFAULTS, ...(config || {}) };
-    if (!c.climate) throw new Error("climate entity missing");
-    // The garden door pause belongs to the living room only.
-    if (c.paused === undefined) c.paused = c.climate === LIVING_ROOM ? LIVING_ROOM_PAUSED : null;
+    // 0.2.x had one `climate`; keep it working as a one-room list.
+    if (!c.thermostats && c.climate) c.thermostats = [{ entity: c.climate, name: c.name, paused: c.paused }];
+    if (c.thermostats && !Array.isArray(c.thermostats)) throw new Error("thermostats must be a list");
     this._config = c;
+    this._rows.forEach((r) => { clearTimeout(r.timer); clearTimeout(r.clear); });
+    this._rows.clear();
+    this._rowKey = "";
     this._build();
     if (this._hass) this._update();
   }
@@ -151,59 +185,41 @@ class HeatingControlCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 3;
+    return 2 + this._rooms().length;
   }
 
   getGridOptions() {
-    return { columns: 6, rows: 3, min_columns: 6, min_rows: 3 };
+    return { columns: 12, min_columns: 6, rows: "auto" };
   }
 
   _build() {
     this.shadowRoot.innerHTML = `
       <style>${STYLE}</style>
       <ha-card>
-        <div class="top">
+        <div id="fault"><ha-icon icon="mdi:alert-octagon"></ha-icon><div>Boiler fault<small>The boiler reports a fault. Check its display; heating may not work.</small></div></div>
+        <div class="head">
           <button class="icon" id="icon" title="Boiler"><ha-icon id="flame" icon="mdi:fire-off"></ha-icon></button>
-          <div class="info" id="info">
-            <div class="name" id="name"></div>
-            <div class="status" id="status"></div>
-          </div>
-          <button class="mode" id="mode"><ha-icon id="modeIcon" icon="mdi:radiator-off"></ha-icon></button>
-        </div>
-        <div class="bottom">
-          <div class="block">
-            <span class="label">Room</span>
-            <span class="value" id="current">--</span>
-          </div>
-          <div class="setpoint">
-            <button class="adj" id="down" title="Lower"><ha-icon icon="mdi:minus"></ha-icon></button>
-            <div class="block">
-              <span class="label">Target</span>
-              <span class="value" id="target">--</span>
-            </div>
-            <button class="adj" id="up" title="Raise"><ha-icon icon="mdi:plus"></ha-icon></button>
+          <div class="htext" id="htext">
+            <div class="title" id="title"></div>
+            <div class="winner" id="winner"></div>
+            <div class="sub" id="sub"></div>
           </div>
         </div>
-        <div class="note" id="info2"><ha-icon id="info2Icon" icon="mdi:information-outline"></ha-icon><span id="info2Text"></span></div>
+        <div class="note" id="sched"><ha-icon icon="mdi:calendar-clock"></ha-icon><span>Central heating is off by schedule</span></div>
         <div class="note" id="warn"><ha-icon icon="mdi:alert"></ha-icon><span id="warnText"></span></div>
+        <div class="rooms" id="rooms"></div>
       </ha-card>`;
-
     const $ = (id) => this.shadowRoot.getElementById(id);
     this._el = {
       card: this.shadowRoot.querySelector("ha-card"),
-      name: $("name"), status: $("status"), current: $("current"), target: $("target"),
-      mode: $("mode"), modeIcon: $("modeIcon"), flame: $("flame"),
-      warn: $("warn"), warnText: $("warnText"),
-      info2: $("info2"), info2Icon: $("info2Icon"), info2Text: $("info2Text"),
-      up: $("up"), down: $("down"),
+      title: $("title"), winner: $("winner"), sub: $("sub"), flame: $("flame"),
+      sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
-    $("info").addEventListener("click", () => this._moreInfo(this._config.climate));
-    $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget || this._config.climate));
+    $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
+    $("htext").addEventListener("click", () => this._moreInfo(this._winnerEntity || this._config.heating_area));
+    $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
+    $("sched").addEventListener("click", () => this._moreInfo(this._config.ch_enabled));
     $("warn").addEventListener("click", () => this._moreInfo(this._config.pressure));
-    $("info2").addEventListener("click", () => this._moreInfo(this._info2Target));
-    $("up").addEventListener("click", () => this._adjust(1));
-    $("down").addEventListener("click", () => this._adjust(-1));
-    $("mode").addEventListener("click", () => this._modeTap());
   }
 
   _state(id) {
@@ -215,7 +231,7 @@ class HeatingControlCard extends HTMLElement {
     return !!s && s.state === "on";
   }
 
-  // The area name HA's area_name() would give: the entity's own area, else its device's.
+  // The area name HA's area_name() gives: the entity's own area, else its device's.
   _areaOf(entityId) {
     const h = this._hass;
     const ent = h.entities && h.entities[entityId];
@@ -225,151 +241,237 @@ class HeatingControlCard extends HTMLElement {
     return areaId && h.areas && h.areas[areaId] ? h.areas[areaId].name : null;
   }
 
+  // Configured rooms, or every virtual thermostat sorted by name.
+  _rooms() {
+    const c = this._config;
+    if (!c || !this._hass) return [];
+    let list;
+    if (c.thermostats) {
+      list = c.thermostats.map((t) => (typeof t === "string" ? { entity: t } : { ...t })).filter((t) => t.entity);
+    } else {
+      list = Object.keys(this._hass.states).filter((id) => id.startsWith(PREFIX)).map((entity) => ({ entity }));
+    }
+    list.forEach((t) => {
+      if (t.paused === undefined) t.paused = t.entity === LIVING_ROOM ? LIVING_ROOM_PAUSED : null;
+      const s = this._state(t.entity);
+      t.label = t.name || this._areaOf(t.entity) || (s && s.attributes.friendly_name) || t.entity;
+    });
+    if (!c.thermostats) list.sort((a, b) => a.label.localeCompare(b.label));
+    return list;
+  }
+
   // sensor.delta_temperature holds JSON; a plain area sensor holds the name.
-  _winner() {
+  _winnerInfo() {
     const s = this._state(this._config.heating_area);
-    if (!s) return null;
-    let raw = String(s.state);
+    if (!s) return { area: null };
+    const raw = String(s.state);
+    let info = { area: raw };
     if (raw.startsWith("{")) {
       try {
-        raw = String(JSON.parse(raw).area ?? "");
+        info = JSON.parse(raw);
       } catch (err) {
-        return null;
+        return { area: null };
       }
     }
-    return raw && !BAD.includes(raw.toLowerCase()) && raw.toLowerCase() !== "off" ? raw : null;
+    const area = info.area == null ? "" : String(info.area);
+    return {
+      area: area && !BAD.includes(area.toLowerCase()) && area.toLowerCase() !== "off" ? area : null,
+      target: num(info.target),
+      curr: num(info.curr),
+    };
   }
 
   _update() {
     if (!this._el || !this._hass) return;
     const c = this._config;
     const e = this._el;
-    const cl = this._state(c.climate);
-    if (!cl) {
-      e.name.textContent = c.name || c.climate;
-      e.status.textContent = "Entity not found";
-      return;
-    }
-
-    const a = cl.attributes;
-    const unavailable = BAD.includes(cl.state);
-    const isOff = cl.state === "off";
-    const paused = this._on(c.paused);
+    const rooms = this._rooms();
 
     const boilerState = this._state(c.boiler);
-    const chActive = boilerState ? boilerState.state === "on" : a.hvac_action === "heating";
+    const chActive = boilerState ? boilerState.state === "on" : false;
     const dhw = this._on(c.hot_water);
     const chEnabledState = this._state(c.ch_enabled);
     const chDisabled = !!chEnabledState && chEnabledState.state === "off";
-
-    const winner = this._winner();
-    const myArea = this._areaOf(c.climate);
-    const mine = !!winner && !!myArea && winner === myArea;
-    const callsForHeat = !isOff && Number(a.temperature) > Number(a.current_temperature);
-
     const pState = this._state(c.pressure);
     const p = pState ? parseFloat(pState.state) : NaN;
     const lowP = !isNaN(p) && p < Number(c.pressure_min);
+    const fault = this._on(c.fault);
 
-    // Drop the optimistic value once HA reports it
-    if (this._pending !== null && !this._timer && Number(a.temperature) === this._pending) {
-      this._pending = null;
-      clearTimeout(this._clear);
+    const w = this._winnerInfo();
+    const winRoom = w.area ? rooms.find((r) => this._areaOf(r.entity) === w.area || r.label === w.area) : null;
+    this._winnerEntity = winRoom ? winRoom.entity : null;
+
+    // Header
+    e.title.textContent = c.title || "";
+    if (w.area) {
+      e.winner.textContent = w.area;
+      const temps = w.curr !== null && w.target !== null ? `${fmt(w.curr)}° → ${fmt(w.target)}°` : "";
+      const boiler = chActive ? "boiler on" : dhw ? "boiler on for hot water" : "boiler idle";
+      e.sub.textContent = [temps, boiler].filter(Boolean).join(" · ");
+    } else {
+      e.winner.textContent = dhw ? "Hot water" : "No room calls for heat";
+      e.sub.textContent = chActive ? "Boiler on" : dhw ? "Boiler on for hot water" : "Boiler idle";
     }
-    const target = this._pending !== null ? this._pending : a.temperature;
-    const min = a.min_temp ?? 5;
-    const max = a.max_temp ?? 30;
-
-    // Status line: what the boiler is doing, seen from this room.
-    let status;
-    if (unavailable) status = "Unavailable";
-    else if (paused) status = "Paused · garden doors open";
-    else if (chActive && mine) status = "Boiler on for this room";
-    else if (chActive && winner) status = callsForHeat ? `Boiler on for ${winner} · heating along` : `Boiler on for ${winner}`;
-    else if (chActive) status = "Boiler on";
-    else if (dhw) status = "Boiler on for hot water";
-    else status = isOff ? "Off" : "Boiler idle";
-
-    // Extra line: a room in heat that cannot get heat right now.
-    let note = null;
-    this._info2Target = null;
-    if (!unavailable && !paused && !isOff && chDisabled) {
-      note = { icon: "mdi:calendar-clock", text: "Central heating is off by schedule", target: c.ch_enabled };
+    if (fault) {
+      e.winner.textContent = "Boiler fault";
+      e.sub.textContent = w.area ? `Heating for ${w.area} may not work` : "Heating may not work";
     }
-
     let icon = "mdi:fire-off";
-    if (lowP) icon = "mdi:fire-alert";
+    if (fault) icon = "mdi:alert-octagon";
+    else if (lowP) icon = "mdi:fire-alert";
     else if (chActive) icon = "mdi:fire";
     else if (dhw) icon = "mdi:water-boiler";
-    this._iconTarget = chActive || !dhw ? c.boiler : c.hot_water;
-
-    e.name.textContent = c.name || a.friendly_name || c.climate;
-    e.status.textContent = status;
-    e.current.textContent = `${fmt(a.current_temperature)}°`;
-    e.target.textContent = `${fmt(target)}°`;
     e.flame.setAttribute("icon", icon);
+    this._iconTarget = fault ? c.fault : !chActive && dhw ? c.hot_water : c.boiler;
 
-    if (paused) {
-      e.modeIcon.setAttribute("icon", "mdi:pause");
-      e.mode.title = "Paused by the garden doors";
-    } else {
-      e.modeIcon.setAttribute("icon", isOff ? "mdi:radiator-off" : "mdi:radiator");
-      e.mode.title = isOff ? "Turn heating on" : "Turn heating off";
-    }
-
-    e.info2.classList.toggle("show", !!note);
-    if (note) {
-      e.info2Icon.setAttribute("icon", note.icon);
-      e.info2Text.textContent = note.text;
-      this._info2Target = note.target;
-    }
+    const anyHeat = rooms.some((r) => {
+      const s = this._state(r.entity);
+      return s && s.state !== "off" && !BAD.includes(s.state);
+    });
+    e.sched.classList.toggle("show", chDisabled && anyHeat);
     e.warn.classList.toggle("show", lowP);
     e.warnText.textContent = lowP ? `Low CH pressure: ${fmt(p)} bar (min ${fmt(c.pressure_min)})` : "";
 
+    const cls = e.card.classList;
+    cls.toggle("burning", chActive);
+    cls.toggle("dhw", dhw && !chActive);
+    cls.toggle("alert", lowP);
+    cls.toggle("fault", fault);
+
+    // Rows: rebuild only when the set of rooms changes, else update in place.
+    const visible = rooms.filter((r) => {
+      if (c.show_off !== false) return true;
+      const s = this._state(r.entity);
+      return !s || s.state !== "off" || r.entity === this._winnerEntity;
+    });
+    const key = visible.map((r) => `${r.entity}|${r.label}`).join(",");
+    if (key !== this._rowKey) this._buildRows(visible, key);
+    visible.forEach((r) => this._updateRow(r, { chActive, chDisabled, winner: this._winnerEntity }));
+  }
+
+  _buildRows(rooms, key) {
+    const box = this._el.rooms;
+    const keep = new Set(rooms.map((r) => r.entity));
+    this._rows.forEach((r, id) => {
+      if (!keep.has(id)) {
+        clearTimeout(r.timer);
+        clearTimeout(r.clear);
+        this._rows.delete(id);
+      }
+    });
+    box.innerHTML = rooms.length ? "" : `<div class="empty">No virtual thermostats found</div>`;
+    rooms.forEach((room) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `
+        <div class="rinfo">
+          <div class="rname">${esc(room.label)}</div>
+          <div class="rrole"><ha-icon class="ricon" icon="mdi:fire"></ha-icon><span class="rtext"></span></div>
+        </div>
+        <div class="rcur"></div>
+        <div class="set">
+          <button class="adj down" title="Lower"><ha-icon icon="mdi:minus"></ha-icon></button>
+          <div class="rtgt"></div>
+          <button class="adj up" title="Raise"><ha-icon icon="mdi:plus"></ha-icon></button>
+        </div>
+        <button class="mode"><ha-icon class="micon" icon="mdi:radiator-off"></ha-icon></button>`;
+      const q = (s) => row.querySelector(s);
+      const refs = { row, ricon: q(".ricon"), rtext: q(".rtext"), cur: q(".rcur"), tgt: q(".rtgt"), up: q(".up"), down: q(".down"), mode: q(".mode"), micon: q(".micon") };
+      const prev = this._rows.get(room.entity);
+      const state = { refs, pending: prev ? prev.pending : null, timer: prev ? prev.timer : null, clear: prev ? prev.clear : null, room };
+      this._rows.set(room.entity, state);
+      q(".rinfo").addEventListener("click", () => this._moreInfo(room.entity));
+      refs.up.addEventListener("click", () => this._adjust(room.entity, 1));
+      refs.down.addEventListener("click", () => this._adjust(room.entity, -1));
+      refs.mode.addEventListener("click", () => this._modeTap(room.entity));
+      box.appendChild(row);
+    });
+    this._rowKey = key;
+  }
+
+  _updateRow(room, ctx) {
+    const r = this._rows.get(room.entity);
+    if (!r) return;
+    r.room = room;
+    const f = r.refs;
+    const s = this._state(room.entity);
+    const unavailable = !s || BAD.includes(s.state);
+    const a = s ? s.attributes : {};
+    const isOff = !unavailable && s.state === "off";
+    const paused = this._on(room.paused);
+
+    if (r.pending !== null && !r.timer && num(a.temperature) === r.pending) {
+      r.pending = null;
+      clearTimeout(r.clear);
+    }
+    const target = r.pending !== null ? r.pending : a.temperature;
+    const min = a.min_temp ?? 5;
+    const max = a.max_temp ?? 30;
+    const below = num(a.temperature) !== null && num(a.current_temperature) !== null && num(a.current_temperature) < num(a.temperature);
+    const isWinner = ctx.winner === room.entity;
+
+    // Role in the two-tier model
+    let role, roleIcon;
+    if (unavailable) { role = "Unavailable"; roleIcon = "mdi:help-circle-outline"; }
+    else if (paused) { role = "Paused · garden doors open"; roleIcon = "mdi:door-open"; }
+    else if (isOff) { role = "Off"; roleIcon = "mdi:power"; }
+    else if (isWinner) { role = ctx.chActive ? "Heating" : "Calls for heat"; roleIcon = "mdi:fire"; }
+    else if (below && ctx.chActive) { role = "Heating along"; roleIcon = "mdi:radiator"; }
+    else if (below) { role = "Calls for heat"; roleIcon = "mdi:thermometer-chevron-up"; }
+    else { role = "Reached"; roleIcon = "mdi:check"; }
+
+    f.rtext.textContent = role;
+    f.ricon.setAttribute("icon", roleIcon);
+    f.cur.textContent = `${fmt(a.current_temperature)}°`;
+    f.tgt.textContent = isOff && r.pending === null ? "--" : `${fmt(target)}°`;
+
+    if (paused) {
+      f.micon.setAttribute("icon", "mdi:pause");
+      f.mode.title = "Paused by the garden doors";
+    } else {
+      f.micon.setAttribute("icon", isOff ? "mdi:radiator-off" : "mdi:radiator");
+      f.mode.title = isOff ? "Turn heating on" : "Turn heating off";
+    }
+
     // While paused the pause/resume scripts own the thermostat: a change
     // here would be overwritten by the resume snapshot.
-    const locked = unavailable || paused;
-    e.down.disabled = locked || isOff || Number(target) <= min;
-    e.up.disabled = locked || isOff || Number(target) >= max;
-    e.mode.disabled = unavailable;
+    const locked = unavailable || paused || isOff;
+    f.down.disabled = locked || num(target) === null || num(target) <= min;
+    f.up.disabled = locked || num(target) === null || num(target) >= max;
+    f.mode.disabled = unavailable;
 
-    const cls = e.card.classList;
-    cls.toggle("burning", chActive && !unavailable);
-    cls.toggle("dhw", dhw && !chActive && !unavailable);
-    cls.toggle("mine", chActive && mine);
-    cls.toggle("heat", !isOff && !unavailable && !paused);
-    cls.toggle("off", isOff && !paused);
+    const cls = f.row.classList;
+    cls.toggle("win", isWinner && !paused && !isOff && !unavailable);
+    cls.toggle("along", !isWinner && below && ctx.chActive && !isOff && !paused && !unavailable);
+    cls.toggle("heat", !isOff && !paused && !unavailable);
+    cls.toggle("off", isOff);
     cls.toggle("paused", paused);
-    cls.toggle("alert", lowP);
-    cls.toggle("pending", this._pending !== null);
+    cls.toggle("pending", r.pending !== null);
     cls.toggle("unavailable", unavailable);
   }
 
-  _adjust(dir) {
-    const cl = this._state(this._config.climate);
-    if (!cl) return;
-    const a = cl.attributes;
-    const step = Number(this._config.step || a.target_temp_step || 0.5);
+  _adjust(entityId, dir) {
+    const r = this._rows.get(entityId);
+    const s = this._state(entityId);
+    if (!r || !s) return;
+    const a = s.attributes;
+    const step = Number(r.room.step || this._config.step || a.target_temp_step || 0.5);
     const min = a.min_temp ?? 5;
     const max = a.max_temp ?? 30;
-    const base = Number(this._pending !== null ? this._pending : (a.temperature ?? min));
+    const base = Number(r.pending !== null ? r.pending : (a.temperature ?? min));
     let v = Math.round((base + dir * step) / step) * step;
     v = Math.round(Math.min(max, Math.max(min, v)) * 100) / 100;
-    this._pending = v;
+    r.pending = v;
 
-    // Debounce: one service call after the last tap, so TRV Setpoint Sync
-    // runs once instead of once per tap.
-    clearTimeout(this._timer);
-    clearTimeout(this._clear);
-    this._timer = setTimeout(() => {
-      this._timer = null;
-      this._hass.callService("climate", "set_temperature", {
-        entity_id: this._config.climate,
-        temperature: v,
-      });
+    // One service call after the last tap, so TRV Setpoint Sync runs once.
+    clearTimeout(r.timer);
+    clearTimeout(r.clear);
+    r.timer = setTimeout(() => {
+      r.timer = null;
+      this._hass.callService("climate", "set_temperature", { entity_id: entityId, temperature: v });
       // Fallback if HA never confirms (rejected call, rounding)
-      this._clear = setTimeout(() => {
-        this._pending = null;
+      r.clear = setTimeout(() => {
+        r.pending = null;
         this._update();
       }, 5000);
       this._update();
@@ -377,19 +479,19 @@ class HeatingControlCard extends HTMLElement {
     this._update();
   }
 
-  _modeTap() {
-    const c = this._config;
-    if (this._on(c.paused)) {
-      this._moreInfo(c.paused);
+  _modeTap(entityId) {
+    const r = this._rows.get(entityId);
+    if (r && this._on(r.room.paused)) {
+      this._moreInfo(r.room.paused);
       return;
     }
-    const cl = this._state(c.climate);
-    if (!cl) return;
-    const modes = cl.attributes.hvac_modes || [];
-    const onMode = c.on_mode || (modes.includes("heat") ? "heat" : modes.find((m) => m !== "off"));
+    const s = this._state(entityId);
+    if (!s) return;
+    const modes = s.attributes.hvac_modes || [];
+    const onMode = (r && r.room.on_mode) || this._config.on_mode || (modes.includes("heat") ? "heat" : modes.find((m) => m !== "off"));
     this._hass.callService("climate", "set_hvac_mode", {
-      entity_id: c.climate,
-      hvac_mode: cl.state === "off" ? onMode : "off",
+      entity_id: entityId,
+      hvac_mode: s.state === "off" ? onMode : "off",
     });
   }
 
@@ -404,14 +506,15 @@ class HeatingControlCard extends HTMLElement {
 /* ---------- Visual editor ---------- */
 
 const SCHEMA = [
-  { name: "name", selector: { text: {} } },
-  { name: "climate", selector: { entity: { domain: "climate" } } },
+  { name: "title", selector: { text: {} } },
+  { name: "thermostats", selector: { entity: { domain: "climate", multiple: true } } },
+  { name: "show_off", selector: { boolean: {} } },
   { name: "heating_area", selector: { entity: { domain: ["sensor", "input_text", "input_select"] } } },
   { name: "boiler", selector: { entity: { domain: "binary_sensor" } } },
   { name: "hot_water", selector: { entity: { domain: "binary_sensor" } } },
   { name: "ch_enabled", selector: { entity: { domain: ["switch", "input_boolean"] } } },
-  { name: "paused", selector: { entity: { domain: ["input_boolean", "binary_sensor"] } } },
   { name: "pressure", selector: { entity: { domain: "sensor" } } },
+  { name: "fault", selector: { entity: { domain: "binary_sensor" } } },
   {
     type: "grid", name: "", schema: [
       { name: "pressure_min", selector: { number: { min: 0, max: 3, step: 0.1, mode: "box", unit_of_measurement: "bar" } } },
@@ -421,14 +524,15 @@ const SCHEMA = [
 ];
 
 const LABELS = {
-  name: "Name",
-  climate: "Virtual thermostat",
+  title: "Title",
+  thermostats: "Thermostats (empty: all virtual thermostats)",
+  show_off: "Show rooms that are off",
   heating_area: "Winning room (delta temperature or area sensor)",
   boiler: "Central heating active",
   hot_water: "Hot water active",
   ch_enabled: "Central heating enabled",
-  paused: "Heating paused (living room)",
   pressure: "CH water pressure",
+  fault: "Boiler fault indication",
   pressure_min: "Low pressure threshold",
   step: "Setpoint step",
 };
@@ -465,7 +569,9 @@ class HeatingControlCardEditor extends HTMLElement {
       this._form.computeLabel = (s) => LABELS[s.name] || s.name;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
-        this._config = ev.detail.value;
+        const cfg = { ...ev.detail.value };
+        if (Array.isArray(cfg.thermostats) && !cfg.thermostats.length) delete cfg.thermostats;
+        this._config = cfg;
         this.dispatchEvent(new CustomEvent("config-changed", {
           detail: { config: this._config }, bubbles: true, composed: true,
         }));
@@ -473,7 +579,10 @@ class HeatingControlCardEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
-    this._form.data = this._config;
+    // Objects in YAML (entity + name) show as plain entities in the editor.
+    const data = { ...this._config };
+    if (Array.isArray(data.thermostats)) data.thermostats = data.thermostats.map((t) => (typeof t === "string" ? t : t.entity));
+    this._form.data = data;
   }
 }
 
@@ -488,7 +597,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "heating-control-card",
   name: "Heating Control Card",
-  description: "Room thermostat, setpoint, boiler status, winning room and pressure warning.",
+  description: "All virtual thermostats, the room the boiler heats for, boiler status and pressure warning.",
   preview: true,
 });
 
