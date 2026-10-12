@@ -16,14 +16,25 @@
  *  - sensor.delta_temperature: JSON {"area","target","curr","delta"}. A plain
  *    area sensor (e.g. sensor.virtual_heating_area) works too.
  *  - binary_sensor.main_thermostat_central_heating_active / ..._domestic_hot_
- *    water_active: what the boiler is firing for.
+ *    water_active: the mode the boiler is in. CH active alone does not mean
+ *    the burner fires: it can just be pumping water that is already warm.
+ *  - binary_sensor.diyless_thermostat_flame_on: whether the burner fires.
+ *    Heating = CH active + flame, Pumping = CH active without flame.
+ *    Without a flame entity, CH active counts as heating.
+ *  - sensor.thermostat_relative_modulation_level: burner load while it fires.
+ *  - When the boiler entity is unavailable or unknown the ESPHome thermostat
+ *    is offline: the header says so instead of guessing "idle". The rows keep
+ *    working, the virtual thermostats live in HA itself.
  *  - switch.main_thermostat_central_heating_enabled: owned by the Heating
  *    Schedule. The card reports it, never touches it.
  *  - input_boolean.garden_heating_paused (living room only): while set, the
  *    pause/resume scripts own that thermostat, so its row is locked.
- *  - sensor.thermostat_water_pressure_in_ch_circuit: low pressure warning.
+ *  - sensor.thermostat_water_pressure_in_ch_circuit: low and high pressure
+ *    warnings (the safety valve opens at 3 bar).
  *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
- *    When on, the whole card turns red and a banner says so first.
+ *    When on, the whole card turns red and a banner says so first. OpenTherm
+ *    sends only this one bit, not the code on the boiler display, so the
+ *    card does not try to interpret it.
  *
  * Setpoint taps are batched per room: the new target shows at once and one
  * climate.set_temperature goes out 0.8 s after the last tap.
@@ -31,7 +42,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
@@ -44,9 +55,12 @@ const DEFAULTS = {
   heating_area: "sensor.delta_temperature",
   boiler: "binary_sensor.main_thermostat_central_heating_active",
   hot_water: "binary_sensor.main_thermostat_domestic_hot_water_active",
+  flame: "binary_sensor.diyless_thermostat_flame_on",
+  modulation: "sensor.thermostat_relative_modulation_level",
   ch_enabled: "switch.main_thermostat_central_heating_enabled",
   pressure: "sensor.thermostat_water_pressure_in_ch_circuit",
   pressure_min: 1.4,
+  pressure_max: 2.7,
   fault: "binary_sensor.main_thermostat_fault_indication",
   step: null,
   on_mode: null,
@@ -84,6 +98,7 @@ const STYLE = `
   .dhw .head .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
   .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
   .alert .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
+  .offline .head .icon { color: var(--disabled-color, #9e9e9e); background: rgba(127,127,127,.15); }
   .burning #flame { animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
   .htext { flex: 1; min-width: 0; cursor: pointer; }
   .title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
@@ -170,6 +185,12 @@ class HeatingControlCard extends HTMLElement {
     const c = { ...DEFAULTS, ...(config || {}) };
     // 0.2.x had one `climate`; keep it working as a one-room list.
     if (!c.thermostats && c.climate) c.thermostats = [{ entity: c.climate, name: c.name, paused: c.paused }];
+    else if (c.thermostats && (c.climate || c.name || c.paused !== undefined)) {
+      console.warn(
+        "heating-control-card: `thermostats` is set, so the 0.2 keys `climate`, `name` and `paused` are ignored. " +
+        "Remove them, and give a room its own name or paused entity inside `thermostats`."
+      );
+    }
     if (c.thermostats && !Array.isArray(c.thermostats)) throw new Error("thermostats must be a list");
     this._config = c;
     this._rows.forEach((r) => { clearTimeout(r.timer); clearTimeout(r.clear); });
@@ -288,14 +309,24 @@ class HeatingControlCard extends HTMLElement {
     const rooms = this._rooms();
 
     const boilerState = this._state(c.boiler);
-    const chActive = boilerState ? boilerState.state === "on" : false;
-    const dhw = this._on(c.hot_water);
+    const flameState = this._state(c.flame);
+    const offline = (!!boilerState && BAD.includes(boilerState.state)) || (!!flameState && BAD.includes(flameState.state));
+    const chActive = !offline && !!boilerState && boilerState.state === "on";
+    const dhw = !offline && this._on(c.hot_water);
+    // Burner firing: the flame entity when there is one, else CH active.
+    const firing = !offline && (flameState ? flameState.state === "on" : chActive || dhw);
+    // On a combi a hot water run wins: the flame is then for the tap.
+    const heating = chActive && firing && !dhw;
+    const pumping = chActive && !firing && !dhw;
+    const modState = this._state(c.modulation);
+    const mod = firing && modState ? num(modState.state) : null;
     const chEnabledState = this._state(c.ch_enabled);
     const chDisabled = !!chEnabledState && chEnabledState.state === "off";
     const pState = this._state(c.pressure);
     const p = pState ? parseFloat(pState.state) : NaN;
     const lowP = !isNaN(p) && p < Number(c.pressure_min);
-    const fault = this._on(c.fault);
+    const highP = !isNaN(p) && c.pressure_max != null && p > Number(c.pressure_max);
+    const fault = !offline && this._on(c.fault);
 
     const w = this._winnerInfo();
     const winRoom = w.area ? rooms.find((r) => this._areaOf(r.entity) === w.area || r.label === w.area) : null;
@@ -303,39 +334,53 @@ class HeatingControlCard extends HTMLElement {
 
     // Header
     e.title.textContent = c.title || "";
-    if (w.area) {
+    const modText = mod !== null ? ` · ${Math.round(mod)}%` : "";
+    let activity;
+    if (offline) activity = "thermostat offline";
+    else if (heating) activity = `boiler heating${modText}`;
+    else if (pumping) activity = "boiler pumping";
+    else if (dhw) activity = `boiler on for hot water${firing ? modText : ""}`;
+    else activity = "boiler idle";
+    if (offline) {
+      e.winner.textContent = "Thermostat offline";
+      e.sub.textContent = w.area ? `${w.area} calls for heat · boiler status unknown` : "Boiler status unknown";
+    } else if (w.area) {
       e.winner.textContent = w.area;
       const temps = w.curr !== null && w.target !== null ? `${fmt(w.curr)}° → ${fmt(w.target)}°` : "";
-      const boiler = chActive ? "boiler on" : dhw ? "boiler on for hot water" : "boiler idle";
-      e.sub.textContent = [temps, boiler].filter(Boolean).join(" · ");
+      e.sub.textContent = [temps, activity].filter(Boolean).join(" · ");
     } else {
       e.winner.textContent = dhw ? "Hot water" : "No room calls for heat";
-      e.sub.textContent = chActive ? "Boiler on" : dhw ? "Boiler on for hot water" : "Boiler idle";
+      e.sub.textContent = activity.charAt(0).toUpperCase() + activity.slice(1);
     }
     if (fault) {
       e.winner.textContent = "Boiler fault";
       e.sub.textContent = w.area ? `Heating for ${w.area} may not work` : "Heating may not work";
     }
     let icon = "mdi:fire-off";
-    if (fault) icon = "mdi:alert-octagon";
-    else if (lowP) icon = "mdi:fire-alert";
-    else if (chActive) icon = "mdi:fire";
+    if (offline) icon = "mdi:lan-disconnect";
+    else if (fault) icon = "mdi:alert-octagon";
+    else if (lowP || highP) icon = "mdi:fire-alert";
+    else if (heating) icon = "mdi:fire";
+    else if (pumping) icon = "mdi:pump";
     else if (dhw) icon = "mdi:water-boiler";
     e.flame.setAttribute("icon", icon);
-    this._iconTarget = fault ? c.fault : !chActive && dhw ? c.hot_water : c.boiler;
+    this._iconTarget = offline ? c.boiler : fault ? c.fault : dhw ? c.hot_water : c.flame && flameState ? c.flame : c.boiler;
 
     const anyHeat = rooms.some((r) => {
       const s = this._state(r.entity);
       return s && s.state !== "off" && !BAD.includes(s.state);
     });
     e.sched.classList.toggle("show", chDisabled && anyHeat);
-    e.warn.classList.toggle("show", lowP);
-    e.warnText.textContent = lowP ? `Low CH pressure: ${fmt(p)} bar (min ${fmt(c.pressure_min)})` : "";
+    e.warn.classList.toggle("show", lowP || highP);
+    e.warnText.textContent = lowP
+      ? `Low CH pressure: ${fmt(p)} bar (min ${fmt(c.pressure_min)})`
+      : highP ? `High CH pressure: ${fmt(p)} bar (max ${fmt(c.pressure_max)})` : "";
 
     const cls = e.card.classList;
-    cls.toggle("burning", chActive);
-    cls.toggle("dhw", dhw && !chActive);
-    cls.toggle("alert", lowP);
+    cls.toggle("burning", heating);
+    cls.toggle("dhw", dhw);
+    cls.toggle("alert", lowP || highP);
+    cls.toggle("offline", offline);
     cls.toggle("fault", fault);
 
     // Rows: rebuild only when the set of rooms changes, else update in place.
@@ -346,7 +391,7 @@ class HeatingControlCard extends HTMLElement {
     });
     const key = visible.map((r) => `${r.entity}|${r.label}`).join(",");
     if (key !== this._rowKey) this._buildRows(visible, key);
-    visible.forEach((r) => this._updateRow(r, { chActive, chDisabled, winner: this._winnerEntity }));
+    visible.forEach((r) => this._updateRow(r, { heating, pumping, offline, winner: this._winnerEntity }));
   }
 
   _buildRows(rooms, key) {
@@ -415,8 +460,11 @@ class HeatingControlCard extends HTMLElement {
     if (unavailable) { role = "Unavailable"; roleIcon = "mdi:help-circle-outline"; }
     else if (paused) { role = "Paused · garden doors open"; roleIcon = "mdi:door-open"; }
     else if (isOff) { role = "Off"; roleIcon = "mdi:power"; }
-    else if (isWinner) { role = ctx.chActive ? "Heating" : "Calls for heat"; roleIcon = "mdi:fire"; }
-    else if (below && ctx.chActive) { role = "Heating along"; roleIcon = "mdi:radiator"; }
+    else if (isWinner && ctx.heating) { role = "Heating"; roleIcon = "mdi:fire"; }
+    else if (isWinner && ctx.pumping) { role = "Pumping"; roleIcon = "mdi:pump"; }
+    else if (isWinner) { role = "Calls for heat"; roleIcon = "mdi:fire"; }
+    else if (below && ctx.heating) { role = "Heating along"; roleIcon = "mdi:radiator"; }
+    else if (below && ctx.pumping) { role = "Pumping along"; roleIcon = "mdi:pump"; }
     else if (below) { role = "Calls for heat"; roleIcon = "mdi:thermometer-chevron-up"; }
     else { role = "Reached"; roleIcon = "mdi:check"; }
 
@@ -442,7 +490,7 @@ class HeatingControlCard extends HTMLElement {
 
     const cls = f.row.classList;
     cls.toggle("win", isWinner && !paused && !isOff && !unavailable);
-    cls.toggle("along", !isWinner && below && ctx.chActive && !isOff && !paused && !unavailable);
+    cls.toggle("along", !isWinner && below && ctx.heating && !isOff && !paused && !unavailable);
     cls.toggle("heat", !isOff && !paused && !unavailable);
     cls.toggle("off", isOff);
     cls.toggle("paused", paused);
@@ -512,12 +560,15 @@ const SCHEMA = [
   { name: "heating_area", selector: { entity: { domain: ["sensor", "input_text", "input_select"] } } },
   { name: "boiler", selector: { entity: { domain: "binary_sensor" } } },
   { name: "hot_water", selector: { entity: { domain: "binary_sensor" } } },
+  { name: "flame", selector: { entity: { domain: "binary_sensor" } } },
+  { name: "modulation", selector: { entity: { domain: "sensor" } } },
   { name: "ch_enabled", selector: { entity: { domain: ["switch", "input_boolean"] } } },
   { name: "pressure", selector: { entity: { domain: "sensor" } } },
   { name: "fault", selector: { entity: { domain: "binary_sensor" } } },
   {
     type: "grid", name: "", schema: [
       { name: "pressure_min", selector: { number: { min: 0, max: 3, step: 0.1, mode: "box", unit_of_measurement: "bar" } } },
+      { name: "pressure_max", selector: { number: { min: 0, max: 4, step: 0.1, mode: "box", unit_of_measurement: "bar" } } },
       { name: "step", selector: { number: { min: 0.1, max: 1, step: 0.1, mode: "box", unit_of_measurement: "°" } } },
     ],
   },
@@ -530,10 +581,13 @@ const LABELS = {
   heating_area: "Winning room (delta temperature or area sensor)",
   boiler: "Central heating active",
   hot_water: "Hot water active",
+  flame: "Flame on",
+  modulation: "Relative modulation level",
   ch_enabled: "Central heating enabled",
   pressure: "CH water pressure",
   fault: "Boiler fault indication",
   pressure_min: "Low pressure threshold",
+  pressure_max: "High pressure threshold",
   step: "Setpoint step",
 };
 
