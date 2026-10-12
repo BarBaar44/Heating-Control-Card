@@ -334,6 +334,10 @@ class HeatingControlCard extends HTMLElement {
 
     // Header
     e.title.textContent = c.title || "";
+    const anyHeat = rooms.some((r) => {
+      const s = this._state(r.entity);
+      return s && s.state !== "off" && !BAD.includes(s.state);
+    });
     const modText = mod !== null ? ` · ${Math.round(mod)}%` : "";
     let activity;
     if (offline) activity = "thermostat offline";
@@ -349,7 +353,8 @@ class HeatingControlCard extends HTMLElement {
       const temps = w.curr !== null && w.target !== null ? `${fmt(w.curr)}° → ${fmt(w.target)}°` : "";
       e.sub.textContent = [temps, activity].filter(Boolean).join(" · ");
     } else {
-      e.winner.textContent = dhw ? "Hot water" : "No room calls for heat";
+      // No winner: either nothing is set to heat, or every room is at target.
+      e.winner.textContent = dhw ? "Hot water" : !anyHeat || chDisabled ? "Heating off" : "All rooms at target";
       e.sub.textContent = activity.charAt(0).toUpperCase() + activity.slice(1);
     }
     if (fault) {
@@ -366,10 +371,6 @@ class HeatingControlCard extends HTMLElement {
     e.flame.setAttribute("icon", icon);
     this._iconTarget = offline ? c.boiler : fault ? c.fault : dhw ? c.hot_water : c.flame && flameState ? c.flame : c.boiler;
 
-    const anyHeat = rooms.some((r) => {
-      const s = this._state(r.entity);
-      return s && s.state !== "off" && !BAD.includes(s.state);
-    });
     e.sched.classList.toggle("show", chDisabled && anyHeat);
     e.warn.classList.toggle("show", lowP || highP);
     e.warnText.textContent = lowP
