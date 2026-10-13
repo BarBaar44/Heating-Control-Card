@@ -148,7 +148,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   /* Rooms */
   .rooms { display: flex; flex-direction: column; gap: 4px; }
   .row {
-    display: grid; grid-template-columns: 1fr auto auto 34px; align-items: center; gap: 8px;
+    display: grid; grid-template-columns: minmax(0,1fr) minmax(64px,1fr) auto 34px; align-items: center; gap: 8px;
     padding: 6px 6px 6px 10px; border-radius: 12px; border: 1px solid transparent;
   }
   .row.win { border-color: color-mix(in srgb, var(--hc-fire) 45%, transparent); background: color-mix(in srgb, var(--hc-fire) 8%, transparent); }
@@ -160,7 +160,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .row.along .rrole { color: var(--hc-heat); }
   .row.paused .rrole { color: var(--hc-heat); }
   /* Room temperature is the main reading: larger and bolder than the target. */
-  .rcur { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 64px; font-size: 20px; font-weight: 600; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+  .rcur { display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 20px; font-weight: 600; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
   .rcur ha-icon { --mdi-icon-size: 16px; --mdc-icon-size: 16px; color: var(--secondary-text-color); }
   .set { display: flex; align-items: center; gap: 2px; }
   .adj { width: 28px; height: 28px; border-radius: 8px; background: var(--hc-soft); color: var(--primary-text-color); }
@@ -177,7 +177,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   /* One room: its Heat/Off sits in the header, the row loses that column. */
   #hmode { display: none; flex: none; }
   .single #hmode { display: flex; }
-  .single .row { grid-template-columns: 1fr auto auto; }
+  .single .row { grid-template-columns: minmax(0,1fr) minmax(64px,1fr) auto; }
   .single .row .mode { display: none; }
   #hmode.heat { background: var(--hc-heat); color: #fff; }
   #hmode.paused { color: var(--hc-heat); opacity: 1; cursor: pointer; }
@@ -197,7 +197,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
   @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault { animation: none; } }
-  @media (max-width: 360px) { .row { gap: 4px; } .rcur { min-width: 52px; font-size: 18px; } .rcur ha-icon { display: none; } }
+  @media (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
 class HeatingControlCard extends HTMLElement {
