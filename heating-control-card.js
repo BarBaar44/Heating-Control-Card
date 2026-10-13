@@ -42,7 +42,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
@@ -172,6 +172,13 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .row.heat .mode { background: var(--hc-heat); color: #fff; }
   .row.paused .mode { color: var(--hc-heat); opacity: 1; cursor: pointer; }
   .row.unavailable { opacity: .45; }
+  /* One room: its Heat/Off sits in the header, the row loses that column. */
+  #hmode { display: none; flex: none; }
+  .single #hmode { display: flex; }
+  .single .row { grid-template-columns: 1fr auto auto; }
+  .single .row .mode { display: none; }
+  #hmode.heat { background: var(--hc-heat); color: #fff; }
+  #hmode.paused { color: var(--hc-heat); opacity: 1; cursor: pointer; }
   .empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
 
   @keyframes shower {
@@ -265,6 +272,7 @@ class HeatingControlCard extends HTMLElement {
             <div class="winner" id="winner"></div>
             <div class="sub" id="sub"></div>
           </div>
+          <button class="mode" id="hmode"><ha-icon id="hmicon" icon="mdi:radiator-off"></ha-icon></button>
         </div>
         <div class="note" id="sched"><ha-icon icon="mdi:calendar-clock"></ha-icon><span>Central heating is off by schedule</span></div>
         <div class="note" id="warn"><ha-icon icon="mdi:alert"></ha-icon><span id="warnText"></span></div>
@@ -274,11 +282,13 @@ class HeatingControlCard extends HTMLElement {
     this._el = {
       card: this.shadowRoot.querySelector("ha-card"),
       title: $("title"), winner: $("winner"), sub: $("sub"), flame: $("flame"),
+      hmode: $("hmode"), hmicon: $("hmicon"),
       sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
     $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
     $("htext").addEventListener("click", () => this._moreInfo(this._winnerEntity || this._config.heating_area));
     $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
+    $("hmode").addEventListener("click", () => this._single && this._modeTap(this._single));
     $("sched").addEventListener("click", () => this._moreInfo(this._config.ch_enabled));
     $("warn").addEventListener("click", () => this._moreInfo(this._config.pressure));
   }
@@ -434,6 +444,18 @@ class HeatingControlCard extends HTMLElement {
     const key = visible.map((r) => `${r.entity}|${r.label}`).join(",");
     if (key !== this._rowKey) this._buildRows(visible, key);
     visible.forEach((r) => this._updateRow(r, { heating, pumping, offline, winner: this._winnerEntity }));
+
+    // One room: mirror its Heat/Off button into the header.
+    this._single = visible.length === 1 ? visible[0].entity : null;
+    cls.toggle("single", !!this._single);
+    if (this._single) {
+      const f = this._rows.get(this._single).refs;
+      e.hmicon.setAttribute("icon", f.micon.getAttribute("icon"));
+      e.hmode.title = f.mode.title;
+      e.hmode.disabled = f.mode.disabled;
+      e.hmode.classList.toggle("heat", f.row.classList.contains("heat"));
+      e.hmode.classList.toggle("paused", f.row.classList.contains("paused"));
+    }
   }
 
   _buildRows(rooms, key) {

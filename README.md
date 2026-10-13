@@ -24,6 +24,8 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
 * **Pressure:** a red warning line appears when CH pressure drops below `pressure_min` or rises above `pressure_max`. The safety valve opens at 3 bar.
 * **Colors:** every state color is configurable, see below.
 
+With a single room its Heat/Off button sits in the header, on the line with "All rooms at target", so the setpoint control gets more room.
+
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
 
 ## How it fits the backend

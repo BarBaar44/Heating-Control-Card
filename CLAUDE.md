@@ -53,7 +53,7 @@ Row roles: Heating / Pumping (winner), Heating along / Pumping along (below targ
 - Setpoint taps are debounced per room: optimistic value at once, one service call 0.8 s after the last tap, pending value dropped when HA confirms or after 5 s.
 - Rows are rebuilt only when the room set changes; otherwise updated in place (keeps pending timers).
 - 0.2 configs with `climate:` still work as a one-room list. When `thermostats` is set, `climate`/`name`/`paused` are ignored and a console warning is logged.
-- A one-room `thermostats` list is a supported, intended setup (the owner's own dashboard uses it).
+- A one-room `thermostats` list is a supported, intended setup (the owner's own dashboard uses it). With one visible room the card gets class `single`: the row's Heat/Off button is hidden and mirrored as `#hmode` in the header. It is still that room's `set_hvac_mode`, never the `ch_enabled` switch.
 
 ## Releasing
 
