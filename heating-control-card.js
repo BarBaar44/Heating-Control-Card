@@ -42,7 +42,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.6.2";
+const VERSION = "0.6.3";
 
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
@@ -73,7 +73,7 @@ const DEFAULTS = {
 // colors key -> CSS variable and default.
 const COLORS = {
   heating: ["--hc-fire", "#ff5722"],
-  hot_water: ["--hc-dhw", "var(--orange-color, #ff9800)"],
+  hot_water: ["--hc-dhw", "var(--amber-color, #ffb300)"],
   pumping: ["--hc-pump", "var(--disabled-color, #9e9e9e)"],
   idle: ["--hc-idle", "var(--disabled-color, #9e9e9e)"],
   offline: ["--hc-offline", "var(--disabled-color, #9e9e9e)"],
