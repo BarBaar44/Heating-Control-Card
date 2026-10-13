@@ -13,4 +13,4 @@ jobs:
       - uses: hacs/action@main
         with:
           category: plugin
-          ignore: brands topics images
+          ignore: brands topics

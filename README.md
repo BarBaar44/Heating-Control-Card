@@ -1,5 +1,7 @@
 # Heating Control Card
 
+![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
+
 One Lovelace card for every virtual thermostat in the house and the boiler behind them, built for the multi-room heating in [BarBaar44/thermostat](https://github.com/BarBaar44/thermostat).
 
 * **Header:** the room the boiler is heating for right now, the Tier 1 winner from `sensor.delta_temperature`, with its current and target temperature and what the boiler does ("Office · 18.0° → 20.0° · boiler heating · 45%"). With no winner it says "Heating off" when no room is set to heat or the schedule has central heating off, "All rooms at target" when rooms are in heat but none needs more, or "Hot water" while the boiler runs for the tap.
