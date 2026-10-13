@@ -42,7 +42,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
@@ -65,6 +65,26 @@ const DEFAULTS = {
   step: null,
   on_mode: null,
   show_off: true,
+  // Any CSS color ("#ff9800", "orange", "var(--orange-color)") or [r, g, b].
+  // Unset keys keep the defaults in COLORS.
+  colors: null,
+};
+
+// colors key -> CSS variable and default.
+const COLORS = {
+  heating: ["--hc-fire", "#ff5722"],
+  hot_water: ["--hc-dhw", "var(--orange-color, #ff9800)"],
+  pumping: ["--hc-pump", "var(--disabled-color, #9e9e9e)"],
+  idle: ["--hc-idle", "var(--disabled-color, #9e9e9e)"],
+  offline: ["--hc-offline", "var(--disabled-color, #9e9e9e)"],
+  fault: ["--hc-err", "var(--error-color, #db4437)"],
+  warning: ["--hc-warn", "var(--error-color, #db4437)"],
+  room: ["--hc-heat", "var(--state-climate-heat-color, #ff8100)"],
+};
+
+const cssColor = (v) => {
+  if (Array.isArray(v) && v.length === 3 && v.every((n) => num(n) !== null)) return `rgb(${v.map(Number).join(",")})`;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 };
 
 const BAD = ["unknown", "unavailable", "none", ""];
@@ -74,10 +94,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};
 
 const STYLE = `
   :host {
-    --hc-heat: var(--state-climate-heat-color, #ff8100);
-    --hc-fire: #ff5722;
-    --hc-dhw: var(--blue-color, #2196f3);
-    --hc-err: var(--error-color, #db4437);
+${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     --hc-soft: var(--secondary-background-color, rgba(127,127,127,.15));
   }
   ha-card { padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
@@ -92,13 +109,14 @@ const STYLE = `
   .head { display: flex; align-items: center; gap: 10px; }
   .icon {
     width: 44px; height: 44px; border-radius: 50%; flex: none;
-    background: rgba(127,127,127,.15); color: var(--disabled-color, #9e9e9e);
+    color: var(--hc-idle); background: color-mix(in srgb, var(--hc-idle) 15%, transparent);
     transition: background .3s, color .3s;
   }
+  .pumping .head .icon { color: var(--hc-pump); background: color-mix(in srgb, var(--hc-pump) 15%, transparent); }
   .dhw .head .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
   .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
-  .alert .head .icon { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 20%, transparent); }
-  .offline .head .icon { color: var(--disabled-color, #9e9e9e); background: rgba(127,127,127,.15); }
+  .alert .head .icon { color: var(--hc-warn); background: color-mix(in srgb, var(--hc-warn) 20%, transparent); }
+  .offline .head .icon { color: var(--hc-offline); background: color-mix(in srgb, var(--hc-offline) 15%, transparent); }
   /* Animations run only while the header shows the flame or shower head:
      fault and pressure warnings keep their own static icon. Offline never
      sets burning or dhw. */
@@ -113,7 +131,7 @@ const STYLE = `
   .note { display: none; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; padding: 6px 8px; border-radius: 8px; }
   .note ha-icon { --mdc-icon-size: 16px; flex: none; }
   .note.show { display: flex; }
-  #warn { color: var(--hc-err); background: color-mix(in srgb, var(--hc-err) 12%, transparent); }
+  #warn { color: var(--hc-warn); background: color-mix(in srgb, var(--hc-warn) 12%, transparent); }
   #fault {
     display: none; align-items: center; gap: 10px; cursor: pointer;
     padding: 10px 12px; border-radius: 10px; color: #fff; background: var(--hc-err);
@@ -200,7 +218,9 @@ class HeatingControlCard extends HTMLElement {
       );
     }
     if (c.thermostats && !Array.isArray(c.thermostats)) throw new Error("thermostats must be a list");
+    if (c.colors != null && (typeof c.colors !== "object" || Array.isArray(c.colors))) throw new Error("colors must be a map, e.g. hot_water: orange");
     this._config = c;
+    this._applyColors(c.colors || {});
     this._rows.forEach((r) => { clearTimeout(r.timer); clearTimeout(r.clear); });
     this._rows.clear();
     this._rowKey = "";
@@ -211,6 +231,18 @@ class HeatingControlCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._update();
+  }
+
+  // Inline custom properties on the host beat the :host defaults.
+  _applyColors(colors) {
+    Object.keys(colors).forEach((k) => {
+      if (!COLORS[k]) console.warn(`heating-control-card: unknown colors key "${k}". Known: ${Object.keys(COLORS).join(", ")}`);
+    });
+    Object.entries(COLORS).forEach(([k, [v]]) => {
+      const val = cssColor(colors[k]);
+      if (val) this.style.setProperty(v, val);
+      else this.style.removeProperty(v);
+    });
   }
 
   getCardSize() {
@@ -388,6 +420,7 @@ class HeatingControlCard extends HTMLElement {
     const cls = e.card.classList;
     cls.toggle("burning", heating);
     cls.toggle("dhw", dhw);
+    cls.toggle("pumping", pumping);
     cls.toggle("alert", lowP || highP);
     cls.toggle("offline", offline);
     cls.toggle("fault", fault);
@@ -575,6 +608,13 @@ const SCHEMA = [
   { name: "pressure", selector: { entity: { domain: "sensor" } } },
   { name: "fault", selector: { entity: { domain: "binary_sensor" } } },
   {
+    type: "expandable", name: "colors", title: "Colors", schema: [
+      {
+        type: "grid", name: "", schema: Object.keys(COLORS).map((k) => ({ name: k, selector: { text: {} } })),
+      },
+    ],
+  },
+  {
     type: "grid", name: "", schema: [
       { name: "pressure_min", selector: { number: { min: 0, max: 3, step: 0.1, mode: "box", unit_of_measurement: "bar" } } },
       { name: "pressure_max", selector: { number: { min: 0, max: 4, step: 0.1, mode: "box", unit_of_measurement: "bar" } } },
@@ -598,6 +638,14 @@ const LABELS = {
   pressure_min: "Low pressure threshold",
   pressure_max: "High pressure threshold",
   step: "Setpoint step",
+  heating: "Heating",
+  hot_water: "Hot water",
+  pumping: "Pumping",
+  idle: "Idle",
+  offline: "Offline",
+  fault: "Fault",
+  warning: "Pressure warning",
+  room: "Rooms in heat",
 };
 
 async function loadHaForm() {
@@ -634,6 +682,11 @@ class HeatingControlCardEditor extends HTMLElement {
         ev.stopPropagation();
         const cfg = { ...ev.detail.value };
         if (Array.isArray(cfg.thermostats) && !cfg.thermostats.length) delete cfg.thermostats;
+        if (cfg.colors) {
+          const col = Object.fromEntries(Object.entries(cfg.colors).filter(([, v]) => v !== "" && v != null));
+          if (Object.keys(col).length) cfg.colors = col;
+          else delete cfg.colors;
+        }
         this._config = cfg;
         this.dispatchEvent(new CustomEvent("config-changed", {
           detail: { config: this._config }, bubbles: true, composed: true,

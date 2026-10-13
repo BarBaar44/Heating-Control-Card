@@ -30,6 +30,7 @@ The card writes to **one thing only**: `climate.virtual_thermostat_*` (`climate.
 | `ch_enabled` | `switch.main_thermostat_central_heating_enabled` | owned by the Heating Schedule; read only |
 | `fault` | `binary_sensor.main_thermostat_fault_indication` | OpenTherm general fault bit |
 | `pressure` | `sensor.thermostat_water_pressure_in_ch_circuit` | warnings below `pressure_min` 1.4 / above `pressure_max` 2.7 bar |
+| `colors` | map of `COLORS` keys | each key sets one `--hc-*` custom property on the host (inline beats `:host`); unknown keys warn. Keep README color table in sync with `COLORS` |
 | living room `paused` | `input_boolean.garden_heating_paused` | row locked while on (resume snapshot would overwrite changes) |
 
 The winner `area` is matched to a row via the thermostat's area (entity area, else device area, same as Jinja `area_name()`), from `hass.entities`, `hass.devices`, `hass.areas`.
@@ -42,7 +43,7 @@ Priority, highest first: **offline** → **fault** → winner / no winner text.
 - Fault: red border, pulsing banner, red header "Boiler fault". OpenTherm sends no display code (e.g. C1 51): **do not add code interpretation**, the banner says to check the boiler display.
 - Activity: hot water wins (combi). Then CH + flame = heating (with %), CH without flame = pumping, else idle. No flame entity: CH active counts as heating.
 - No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the schedule switch is off, otherwise "All rooms at target".
-- Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, blue) > `mdi:fire-off`.
+- Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, orange) > `mdi:fire-off`.
 - Animations: flame flicker (`.burning`) and falling water shower (`.dhw`) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
 
 Row roles: Heating / Pumping (winner), Heating along / Pumping along (below target while the boiler runs for another room), Calls for heat, Reached, Off, Paused, Unavailable.

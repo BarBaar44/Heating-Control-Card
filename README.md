@@ -14,7 +14,7 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
   | any | on | any | boiler on for hot water |
   | off | off | off | boiler idle |
 
-  The flame flickers only while the burner fires for heating. During a hot water run the header shows a blue shower head with falling water. Both animations stop when the system asks for reduced motion. Without a flame entity, CH active counts as heating.
+  The flame flickers only while the burner fires for heating. During a hot water run the header shows an orange shower head with falling water. Both animations stop when the system asks for reduced motion. Without a flame entity, CH active counts as heating.
 * **Thermostat offline:** when the CH active or flame entity is unavailable or unknown (the ESPHome thermostat reboots or loses its connection), the header says "Thermostat offline" with a grey icon instead of guessing. The rows keep working; the virtual thermostats live in HA itself.
 * **Boiler fault:** when `binary_sensor.main_thermostat_fault_indication` is on, the card gets a red border, a pulsing red "Boiler fault" banner on top and a red header. Tap the banner for the fault sensor. OpenTherm only sends one general fault bit, not the code on the boiler display (such as C1 51), so the card tells you to check the display and does not interpret anything.
 * **Rooms:** one row per `climate.virtual_thermostat_*` with room temperature, target with − and +, and Heat/Off. Each row shows its role in the two-tier model: **Heating** (the winner, highlighted), **Pumping** (the winner while the burner is off), **Heating along** or **Pumping along** (below target while the boiler runs for another room), **Calls for heat**, **Reached**, **Off** or **Paused**.
@@ -22,6 +22,7 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
 * **Garden doors:** while `input_boolean.garden_heating_paused` is on, the living room row says "Paused · garden doors open" and is locked. The pause and resume scripts own that thermostat then; a change made here would be overwritten by the resume snapshot.
 * **Schedule:** when a room is in heat but the schedule has `switch.main_thermostat_central_heating_enabled` off, a note says central heating is off by schedule. The card never touches that switch.
 * **Pressure:** a red warning line appears when CH pressure drops below `pressure_min` or rises above `pressure_max`. The safety valve opens at 3 bar.
+* **Colors:** every state color is configurable, see below.
 
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
 
@@ -71,8 +72,31 @@ All options are optional:
 | `pressure_max` | `2.7` (bar) |
 | `step` | each thermostat's `target_temp_step`, else `0.5` |
 | `on_mode` | `heat` |
+| `colors` | see below |
 
 The living room's `paused` defaults to `input_boolean.garden_heating_paused`; other rooms have none. Set any entity option to `null` to switch that part off. The card also has a visual editor in the dashboard UI.
+
+### Colors
+
+Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`) or `[r, g, b]`. Leave a key out to keep its default. The visual editor has them under **Colors**.
+
+```yaml
+type: custom:heating-control-card
+colors:
+  hot_water: "#ff9800"
+  pumping: teal
+```
+
+| Key | Used for | Default |
+|---|---|---|
+| `heating` | flame icon, header text and winning row while the burner fires | `#ff5722` |
+| `hot_water` | shower head during a hot water run | `var(--orange-color)` |
+| `pumping` | pump icon | `var(--disabled-color)` |
+| `idle` | icon when the boiler is idle | `var(--disabled-color)` |
+| `offline` | icon when the thermostat is offline | `var(--disabled-color)` |
+| `fault` | fault banner, border and header | `var(--error-color)` |
+| `warning` | pressure icon and warning line | `var(--error-color)` |
+| `room` | Heat buttons, Heating along, Paused, pending targets | `var(--state-climate-heat-color)` |
 
 A 0.2 config with `climate:` still works and shows that one room.
 
