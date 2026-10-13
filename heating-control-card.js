@@ -42,7 +42,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
@@ -159,12 +159,14 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .row.win .rrole { color: var(--hc-fire); font-weight: 600; }
   .row.along .rrole { color: var(--hc-heat); }
   .row.paused .rrole { color: var(--hc-heat); }
-  .rcur { font-size: 15px; font-weight: 500; color: var(--secondary-text-color); min-width: 44px; text-align: right; }
+  /* Room temperature is the main reading: larger and bolder than the target. */
+  .rcur { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 64px; font-size: 20px; font-weight: 600; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+  .rcur ha-icon { --mdi-icon-size: 16px; --mdc-icon-size: 16px; color: var(--secondary-text-color); }
   .set { display: flex; align-items: center; gap: 2px; }
   .adj { width: 28px; height: 28px; border-radius: 8px; background: var(--hc-soft); color: var(--primary-text-color); }
   .adj ha-icon { --mdc-icon-size: 18px; }
   .adj:active:not(:disabled) { transform: scale(.92); }
-  .rtgt { font-size: 15px; font-weight: 600; min-width: 46px; text-align: center; color: var(--primary-text-color); }
+  .rtgt { font-size: 14px; font-weight: 500; min-width: 46px; text-align: center; color: var(--primary-text-color); }
   .row.off .rtgt, .row.paused .rtgt { opacity: .4; }
   .row.pending .rtgt { color: var(--hc-heat); opacity: 1; }
   .mode { width: 32px; height: 32px; border-radius: 50%; background: var(--hc-soft); color: var(--secondary-text-color); }
@@ -195,7 +197,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
   @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault { animation: none; } }
-  @media (max-width: 360px) { .row { gap: 4px; } .rcur { min-width: 38px; } }
+  @media (max-width: 360px) { .row { gap: 4px; } .rcur { min-width: 52px; font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
 class HeatingControlCard extends HTMLElement {
@@ -477,7 +479,7 @@ class HeatingControlCard extends HTMLElement {
           <div class="rname">${esc(room.label)}</div>
           <div class="rrole"><ha-icon class="ricon" icon="mdi:fire"></ha-icon><span class="rtext"></span></div>
         </div>
-        <div class="rcur"></div>
+        <div class="rcur" title="Room temperature"><ha-icon icon="mdi:thermometer"></ha-icon><span class="rcurv"></span></div>
         <div class="set">
           <button class="adj down" title="Lower"><ha-icon icon="mdi:minus"></ha-icon></button>
           <div class="rtgt"></div>
@@ -485,7 +487,7 @@ class HeatingControlCard extends HTMLElement {
         </div>
         <button class="mode"><ha-icon class="micon" icon="mdi:radiator-off"></ha-icon></button>`;
       const q = (s) => row.querySelector(s);
-      const refs = { row, ricon: q(".ricon"), rtext: q(".rtext"), cur: q(".rcur"), tgt: q(".rtgt"), up: q(".up"), down: q(".down"), mode: q(".mode"), micon: q(".micon") };
+      const refs = { row, ricon: q(".ricon"), rtext: q(".rtext"), cur: q(".rcurv"), tgt: q(".rtgt"), up: q(".up"), down: q(".down"), mode: q(".mode"), micon: q(".micon") };
       const prev = this._rows.get(room.entity);
       const state = { refs, pending: prev ? prev.pending : null, timer: prev ? prev.timer : null, clear: prev ? prev.clear : null, room };
       this._rows.set(room.entity, state);
