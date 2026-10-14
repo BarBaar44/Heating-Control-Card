@@ -31,6 +31,8 @@
  *    pause/resume scripts own that thermostat, so its row is locked.
  *  - sensor.thermostat_water_pressure_in_ch_circuit: low and high pressure
  *    warnings (the safety valve opens at 3 bar).
+ *  - water_flow (optional, e.g. sensor.watermeterkit_water_meter_kit_current_
+ *    usage): L/min, 0 when no water flows. Shown only while it is above 0.
  *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
  *    When on, the whole card turns red and a banner says so first. OpenTherm
  *    sends only this one bit, not the code on the boiler display, so the
@@ -62,6 +64,8 @@ const DEFAULTS = {
   pressure_min: 1.4,
   pressure_max: 2.7,
   fault: "binary_sensor.main_thermostat_fault_indication",
+  // Optional water meter in L/min; null hides the flow entirely.
+  water_flow: null,
   step: null,
   on_mode: null,
   show_off: true,
@@ -80,6 +84,7 @@ const COLORS = {
   fault: ["--hc-err", "var(--error-color, #db4437)"],
   warning: ["--hc-warn", "var(--error-color, #db4437)"],
   room: ["--hc-heat", "var(--state-climate-heat-color, #ff8100)"],
+  water: ["--hc-water", "var(--light-blue-color, #03a9f4)"],
 };
 
 const cssColor = (v) => {
@@ -145,6 +150,12 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .fault .winner { color: var(--hc-err); }
   #sched { color: var(--secondary-text-color); background: var(--hc-soft); }
 
+  /* Water flow: inline after "Hot water" during a DHW run, else its own line. */
+  .flow { display: none; color: var(--hc-water); cursor: pointer; }
+  .flow.show { display: inline; }
+  #water { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 12%, transparent); }
+  #water.show #drop { animation: drip 1.4s ease-in infinite; }
+
   /* Rooms */
   .rooms { display: flex; flex-direction: column; gap: 4px; }
   .row {
@@ -187,6 +198,11 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     0%   { clip-path: inset(0 0 45% 0); }
     100% { clip-path: inset(0 0 0 0); }
   }
+  @keyframes drip {
+    0%   { transform: translateY(-2px); opacity: .5; }
+    60%  { transform: translateY(1px);  opacity: 1;  }
+    100% { transform: translateY(2px);  opacity: .5; }
+  }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .75; } }
   @keyframes flicker {
     0%   { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
@@ -196,7 +212,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     80%  { transform: rotate(-1.8deg) scaleY(.97);  opacity: .85;}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
-  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #water #drop { animation: none !important; } }
   @media (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
@@ -271,12 +287,13 @@ class HeatingControlCard extends HTMLElement {
           <button class="icon" id="icon" title="Boiler"><ha-icon id="flame" icon="mdi:fire-off"></ha-icon></button>
           <div class="htext" id="htext">
             <div class="title" id="title"></div>
-            <div class="winner" id="winner"></div>
-            <div class="sub" id="sub"></div>
+            <div class="winner"><span id="winner"></span><span class="flow" id="wflow"></span></div>
+            <div class="sub"><span id="sub"></span><span class="flow" id="sflow"></span></div>
           </div>
           <button class="mode" id="hmode"><ha-icon id="hmicon" icon="mdi:radiator-off"></ha-icon></button>
         </div>
         <div class="note" id="sched"><ha-icon icon="mdi:calendar-clock"></ha-icon><span>Central heating is off by schedule</span></div>
+        <div class="note" id="water"><ha-icon id="drop" icon="mdi:water"></ha-icon><span id="waterText"></span></div>
         <div class="note" id="warn"><ha-icon icon="mdi:alert"></ha-icon><span id="warnText"></span></div>
         <div class="rooms" id="rooms"></div>
       </ha-card>`;
@@ -285,12 +302,15 @@ class HeatingControlCard extends HTMLElement {
       card: this.shadowRoot.querySelector("ha-card"),
       title: $("title"), winner: $("winner"), sub: $("sub"), flame: $("flame"),
       hmode: $("hmode"), hmicon: $("hmicon"),
+      wflow: $("wflow"), sflow: $("sflow"), water: $("water"), waterText: $("waterText"),
       sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
     $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
     $("htext").addEventListener("click", () => this._moreInfo(this._winnerEntity || this._config.heating_area));
     $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
     $("hmode").addEventListener("click", () => this._single && this._modeTap(this._single));
+    const flowInfo = (ev) => { ev.stopPropagation(); this._moreInfo(this._config.water_flow); };
+    ["wflow", "sflow", "water"].forEach((id) => $(id).addEventListener("click", flowInfo));
     $("sched").addEventListener("click", () => this._moreInfo(this._config.ch_enabled));
     $("warn").addEventListener("click", () => this._moreInfo(this._config.pressure));
   }
@@ -413,6 +433,22 @@ class HeatingControlCard extends HTMLElement {
       e.winner.textContent = "Boiler fault";
       e.sub.textContent = w.area ? `Heating for ${w.area} may not work` : "Heating may not work";
     }
+    // Water flow: nothing at 0, unavailable or without the option.
+    const flowState = this._state(c.water_flow);
+    const flow = flowState ? num(flowState.state) : null;
+    const flowing = flow !== null && flow > 0;
+    const flowText = flowing ? `${flow.toFixed(1)} L/min` : "";
+    // During a hot water run (and no fault text over it) the flow joins the
+    // "Hot water" label, or the activity line when a room is the winner.
+    const inline = flowing && dhw && !fault;
+    const inWinner = inline && !w.area;
+    e.wflow.textContent = inWinner ? ` · ${flowText}` : "";
+    e.wflow.classList.toggle("show", inWinner);
+    e.sflow.textContent = inline && !inWinner ? ` · ${flowText}` : "";
+    e.sflow.classList.toggle("show", inline && !inWinner);
+    e.water.classList.toggle("show", flowing && !inline);
+    e.waterText.textContent = flowing && !inline ? `Water · ${flowText}` : "";
+
     let icon = "mdi:fire-off";
     if (offline) icon = "mdi:lan-disconnect";
     else if (fault) icon = "mdi:alert-octagon";
@@ -631,6 +667,7 @@ const SCHEMA = [
   { name: "ch_enabled", selector: { entity: { domain: ["switch", "input_boolean"] } } },
   { name: "pressure", selector: { entity: { domain: "sensor" } } },
   { name: "fault", selector: { entity: { domain: "binary_sensor" } } },
+  { name: "water_flow", selector: { entity: { domain: "sensor" } } },
   {
     type: "expandable", name: "colors", title: "Colors", schema: [
       {
@@ -659,6 +696,7 @@ const LABELS = {
   ch_enabled: "Central heating enabled",
   pressure: "CH water pressure",
   fault: "Boiler fault indication",
+  water_flow: "Water flow (L/min, optional)",
   pressure_min: "Low pressure threshold",
   pressure_max: "High pressure threshold",
   step: "Setpoint step",
@@ -670,6 +708,7 @@ const LABELS = {
   fault: "Fault",
   warning: "Pressure warning",
   room: "Rooms in heat",
+  water: "Water flow",
 };
 
 async function loadHaForm() {

@@ -22,6 +22,7 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
 * **Garden doors:** while `input_boolean.garden_heating_paused` is on, the living room row says "Paused · garden doors open" and is locked. The pause and resume scripts own that thermostat then; a change made here would be overwritten by the resume snapshot.
 * **Schedule:** when a room is in heat but the schedule has `switch.main_thermostat_central_heating_enabled` off, a note says central heating is off by schedule. The card never touches that switch.
 * **Pressure:** a red warning line appears when CH pressure drops below `pressure_min` or rises above `pressure_max`. The safety valve opens at 3 bar.
+* **Water flow (optional):** with `water_flow` set to a water meter in L/min, the flow shows while water runs. During a hot water run it joins the label ("Hot water · 6.2 L/min"); otherwise a light blue water line with a dripping drop appears. At 0 or unavailable nothing shows. Tap it for the sensor.
 * **Colors:** every state color is configurable, see below.
 
 With a single room its Heat/Off button sits in the header, on the line with "All rooms at target", so the setpoint control gets more room.
@@ -70,6 +71,7 @@ All options are optional:
 | `ch_enabled` | `switch.main_thermostat_central_heating_enabled` |
 | `fault` | `binary_sensor.main_thermostat_fault_indication` |
 | `pressure` | `sensor.thermostat_water_pressure_in_ch_circuit` |
+| `water_flow` | none. A sensor in L/min, e.g. `sensor.watermeterkit_water_meter_kit_current_usage` |
 | `pressure_min` | `1.4` (bar) |
 | `pressure_max` | `2.7` (bar) |
 | `step` | each thermostat's `target_temp_step`, else `0.5` |
@@ -99,6 +101,7 @@ colors:
 | `fault` | fault banner, border and header | `var(--error-color)` |
 | `warning` | pressure icon and warning line | `var(--error-color)` |
 | `room` | Heat buttons, Heating along, Paused, pending targets | `var(--state-climate-heat-color)` |
+| `water` | water flow text and line | `var(--light-blue-color)` |
 
 A 0.2 config with `climate:` still works and shows that one room.
 
