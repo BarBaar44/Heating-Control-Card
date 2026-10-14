@@ -122,6 +122,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   }
   .pumping .head .icon { color: var(--hc-pump); background: color-mix(in srgb, var(--hc-pump) 15%, transparent); }
   .dhw .head .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
+  .coldwater .head .icon { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 15%, transparent); }
   .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
   .alert .head .icon { color: var(--hc-warn); background: color-mix(in srgb, var(--hc-warn) 20%, transparent); }
   .offline .head .icon { color: var(--hc-offline); background: color-mix(in srgb, var(--hc-offline) 15%, transparent); }
@@ -460,8 +461,10 @@ class HeatingControlCard extends HTMLElement {
     else if (heating) icon = "mdi:fire";
     else if (pumping) icon = "mdi:pump";
     else if (dhw) icon = "mdi:shower-head";
+    else if (flowing) icon = "mdi:water-pump";
     e.flame.setAttribute("icon", icon);
-    this._iconTarget = offline ? c.boiler : fault ? c.fault : dhw ? c.hot_water : c.flame && flameState ? c.flame : c.boiler;
+    const coldIcon = icon === "mdi:water-pump";
+    this._iconTarget = offline ? c.boiler : fault ? c.fault : dhw ? c.hot_water : coldIcon ? c.water_flow : c.flame && flameState ? c.flame : c.boiler;
 
     e.sched.classList.toggle("show", chDisabled && anyHeat);
     e.warn.classList.toggle("show", lowP || highP);
@@ -477,6 +480,7 @@ class HeatingControlCard extends HTMLElement {
     cls.toggle("offline", offline);
     cls.toggle("fault", fault);
     cls.toggle("flowhead", this._flowHead);
+    cls.toggle("coldwater", coldIcon);
 
     // Rows: rebuild only when the set of rooms changes, else update in place.
     const visible = rooms.filter((r) => {

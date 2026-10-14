@@ -45,7 +45,7 @@ Priority, highest first: **offline** → **fault** → winner / no winner text.
 - Fault: red border, pulsing banner, red header "Boiler fault". OpenTherm sends no display code (e.g. C1 51): **do not add code interpretation**, the banner says to check the boiler display.
 - Activity: hot water wins (combi). Then CH + flame = heating (with %), CH without flame = pumping, else idle. No flame entity: CH active counts as heating.
 - No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the schedule switch is off, otherwise "All rooms at target".
-- Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, amber) > `mdi:fire-off`.
+- Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, amber) > `mdi:water-pump` (cold water flowing, light blue, class `coldwater`, taps open the flow sensor) > `mdi:fire-off`.
 - Animations: flame flicker (`.burning`) and falling water shower (`.dhw`) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
 
 Row roles: Heating / Pumping (winner), Heating along / Pumping along (below target while the boiler runs for another room), Calls for heat, Reached, Off, Paused, Unavailable.
