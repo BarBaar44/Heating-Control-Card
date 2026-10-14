@@ -31,7 +31,7 @@ The card writes to **one thing only**: `climate.virtual_thermostat_*` (`climate.
 | `fault` | `binary_sensor.main_thermostat_fault_indication` | OpenTherm general fault bit |
 | `pressure` | `sensor.thermostat_water_pressure_in_ch_circuit` | warnings below `pressure_min` 1.4 / above `pressure_max` 2.7 bar |
 | `colors` | map of `COLORS` keys | each key sets one `--hc-*` custom property on the host (inline beats `:host`); unknown keys warn. Keep README color table in sync with `COLORS` |
-| `water_flow` | none (optional) | L/min. Shown only when > 0: inline after "Hot water" (or after the activity in the sub line when a room wins) during DHW without fault, else its own `#water` note with a dripping `mdi:water`. 0/unavailable/unset shows nothing |
+| `water_flow` | none (optional) | L/min. Shown only when > 0, always as its own `#water` note with a dripping `mdi:water`. The meter counts all tap water, so never attach it to the "Hot water" label. 0/unavailable/unset shows nothing |
 | living room `paused` | `input_boolean.garden_heating_paused` | row locked while on (resume snapshot would overwrite changes) |
 
 The winner `area` is matched to a row via the thermostat's area (entity area, else device area, same as Jinja `area_name()`), from `hass.entities`, `hass.devices`, `hass.areas`.

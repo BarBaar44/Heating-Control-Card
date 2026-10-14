@@ -32,7 +32,8 @@
  *  - sensor.thermostat_water_pressure_in_ch_circuit: low and high pressure
  *    warnings (the safety valve opens at 3 bar).
  *  - water_flow (optional, e.g. sensor.watermeterkit_water_meter_kit_current_
- *    usage): L/min, 0 when no water flows. Shown only while it is above 0.
+ *    usage): L/min, 0 when no water flows. Shown only while it is above 0, as
+ *    its own line: the meter counts all tap water, not only hot water.
  *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
  *    When on, the whole card turns red and a banner says so first. OpenTherm
  *    sends only this one bit, not the code on the boiler display, so the
@@ -150,9 +151,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .fault .winner { color: var(--hc-err); }
   #sched { color: var(--secondary-text-color); background: var(--hc-soft); }
 
-  /* Water flow: inline after "Hot water" during a DHW run, else its own line. */
-  .flow { display: none; color: var(--hc-water); cursor: pointer; }
-  .flow.show { display: inline; }
+  /* Water flow: the meter counts all water, so it never joins "Hot water". */
   #water { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 12%, transparent); }
   #water.show #drop { animation: drip 1.4s ease-in infinite; }
 
@@ -287,8 +286,8 @@ class HeatingControlCard extends HTMLElement {
           <button class="icon" id="icon" title="Boiler"><ha-icon id="flame" icon="mdi:fire-off"></ha-icon></button>
           <div class="htext" id="htext">
             <div class="title" id="title"></div>
-            <div class="winner"><span id="winner"></span><span class="flow" id="wflow"></span></div>
-            <div class="sub"><span id="sub"></span><span class="flow" id="sflow"></span></div>
+            <div class="winner" id="winner"></div>
+            <div class="sub" id="sub"></div>
           </div>
           <button class="mode" id="hmode"><ha-icon id="hmicon" icon="mdi:radiator-off"></ha-icon></button>
         </div>
@@ -302,15 +301,14 @@ class HeatingControlCard extends HTMLElement {
       card: this.shadowRoot.querySelector("ha-card"),
       title: $("title"), winner: $("winner"), sub: $("sub"), flame: $("flame"),
       hmode: $("hmode"), hmicon: $("hmicon"),
-      wflow: $("wflow"), sflow: $("sflow"), water: $("water"), waterText: $("waterText"),
+      water: $("water"), waterText: $("waterText"),
       sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
     $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
     $("htext").addEventListener("click", () => this._moreInfo(this._winnerEntity || this._config.heating_area));
     $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
     $("hmode").addEventListener("click", () => this._single && this._modeTap(this._single));
-    const flowInfo = (ev) => { ev.stopPropagation(); this._moreInfo(this._config.water_flow); };
-    ["wflow", "sflow", "water"].forEach((id) => $(id).addEventListener("click", flowInfo));
+    $("water").addEventListener("click", () => this._moreInfo(this._config.water_flow));
     $("sched").addEventListener("click", () => this._moreInfo(this._config.ch_enabled));
     $("warn").addEventListener("click", () => this._moreInfo(this._config.pressure));
   }
@@ -437,17 +435,8 @@ class HeatingControlCard extends HTMLElement {
     const flowState = this._state(c.water_flow);
     const flow = flowState ? num(flowState.state) : null;
     const flowing = flow !== null && flow > 0;
-    const flowText = flowing ? `${flow.toFixed(1)} L/min` : "";
-    // During a hot water run (and no fault text over it) the flow joins the
-    // "Hot water" label, or the activity line when a room is the winner.
-    const inline = flowing && dhw && !fault;
-    const inWinner = inline && !w.area;
-    e.wflow.textContent = inWinner ? ` · ${flowText}` : "";
-    e.wflow.classList.toggle("show", inWinner);
-    e.sflow.textContent = inline && !inWinner ? ` · ${flowText}` : "";
-    e.sflow.classList.toggle("show", inline && !inWinner);
-    e.water.classList.toggle("show", flowing && !inline);
-    e.waterText.textContent = flowing && !inline ? `Water · ${flowText}` : "";
+    e.water.classList.toggle("show", flowing);
+    e.waterText.textContent = flowing ? `Water · ${flow.toFixed(1)} L/min` : "";
 
     let icon = "mdi:fire-off";
     if (offline) icon = "mdi:lan-disconnect";
