@@ -27,6 +27,10 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
 
 With a single room its Heat/Off button sits in the header, on the line with "All rooms at target", so the setpoint control gets more room.
 
+### Examples
+
+![Heating Control Card examples](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/examples.png)
+
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
 
 ## How it fits the backend
