@@ -32,7 +32,9 @@
  *  - sensor.thermostat_water_pressure_in_ch_circuit: low and high pressure
  *    warnings (the safety valve opens at 3 bar).
  *  - water_flow (optional, e.g. sensor.watermeterkit_water_meter_kit_current_
- *    usage): L/min, 0 when no water flows. Shown only while it is above 0, as
+ *    usage): L/min, 0 when no water flows. Shown only while it is above 0.
+ *    Flow without a hot water run is cold water: with no winning room it
+ *    replaces the status line ("Cold water at 4.0 L/min"). Otherwise it gets
  *    its own line: the meter counts all tap water, not only hot water.
  *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
  *    When on, the whole card turns red and a banner says so first. OpenTherm
@@ -154,6 +156,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   /* Water flow: the meter counts all water, so it never joins "Hot water". */
   #water { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 12%, transparent); }
   #water.show #drop { animation: drip 1.4s ease-in infinite; }
+  .cold .winner { color: var(--hc-water); }
 
   /* Rooms */
   .rooms { display: flex; flex-direction: column; gap: 4px; }
@@ -305,7 +308,7 @@ class HeatingControlCard extends HTMLElement {
       sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
     $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
-    $("htext").addEventListener("click", () => this._moreInfo(this._winnerEntity || this._config.heating_area));
+    $("htext").addEventListener("click", () => this._moreInfo(this._cold ? this._config.water_flow : this._winnerEntity || this._config.heating_area));
     $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
     $("hmode").addEventListener("click", () => this._single && this._modeTap(this._single));
     $("water").addEventListener("click", () => this._moreInfo(this._config.water_flow));
@@ -435,8 +438,12 @@ class HeatingControlCard extends HTMLElement {
     const flowState = this._state(c.water_flow);
     const flow = flowState ? num(flowState.state) : null;
     const flowing = flow !== null && flow > 0;
-    e.water.classList.toggle("show", flowing);
-    e.waterText.textContent = flowing ? `Water · ${flow.toFixed(1)} L/min` : "";
+    // Flow without a hot water run is cold water. With no winning room (and no
+    // offline or fault text) it takes the status line; else its own line.
+    this._cold = flowing && !dhw && !offline && !fault && !w.area;
+    if (this._cold) e.winner.textContent = `Cold water at ${flow.toFixed(1)} L/min`;
+    e.water.classList.toggle("show", flowing && !this._cold);
+    e.waterText.textContent = flowing && !this._cold ? `Water · ${flow.toFixed(1)} L/min` : "";
 
     let icon = "mdi:fire-off";
     if (offline) icon = "mdi:lan-disconnect";
@@ -461,6 +468,7 @@ class HeatingControlCard extends HTMLElement {
     cls.toggle("alert", lowP || highP);
     cls.toggle("offline", offline);
     cls.toggle("fault", fault);
+    cls.toggle("cold", this._cold);
 
     // Rows: rebuild only when the set of rooms changes, else update in place.
     const visible = rooms.filter((r) => {

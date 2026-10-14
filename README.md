@@ -22,7 +22,7 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
 * **Garden doors:** while `input_boolean.garden_heating_paused` is on, the living room row says "Paused · garden doors open" and is locked. The pause and resume scripts own that thermostat then; a change made here would be overwritten by the resume snapshot.
 * **Schedule:** when a room is in heat but the schedule has `switch.main_thermostat_central_heating_enabled` off, a note says central heating is off by schedule. The card never touches that switch.
 * **Pressure:** a red warning line appears when CH pressure drops below `pressure_min` or rises above `pressure_max`. The safety valve opens at 3 bar.
-* **Water flow (optional):** with `water_flow` set to a water meter in L/min, a light blue water line with a dripping drop shows the flow while any tap runs ("Water · 6.2 L/min"). The meter counts all water, so the flow is never labelled as hot water. At 0 or unavailable nothing shows. Tap it for the sensor.
+* **Water flow (optional):** with `water_flow` set to a water meter in L/min, the flow shows while water runs. Cold water (flow without a hot water run) replaces the status line, e.g. "Cold water at 4.0 L/min" instead of "All rooms at target". During a hot water run, or while a room is being heated, a light blue water line with a dripping drop shows it instead ("Water · 6.2 L/min"); the meter counts all water, so it is never labelled as hot water. At 0 or unavailable nothing shows. Tap it for the sensor.
 * **Colors:** every state color is configurable, see below.
 
 With a single room its Heat/Off button sits in the header, on the line with "All rooms at target", so the setpoint control gets more room.
