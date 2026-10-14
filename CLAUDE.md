@@ -46,7 +46,7 @@ Priority, highest first: **offline** → **fault** → winner / no winner text.
 - Activity: hot water wins (combi). Then CH + flame = heating (with %), CH without flame = pumping, else idle. No flame entity: CH active counts as heating.
 - No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the schedule switch is off, otherwise "All rooms at target".
 - Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, amber) > `mdi:water-pump` (cold water flowing, light blue, class `coldwater`, taps open the flow sensor) > `mdi:fire-off`.
-- Animations: flame flicker (`.burning`) and falling water shower (`.dhw`) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
+- Animations: flame flicker (`.burning`), falling water shower (`.dhw`) and a drop falling from the water pump spout (`.coldwater`: the icon's own drop is clipped away and `#drip` falls instead) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
 
 Row roles: Heating / Pumping (winner), Heating along / Pumping along (below target while the boiler runs for another room), Calls for heat, Reached, Off, Paused, Unavailable.
 

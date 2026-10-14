@@ -118,11 +118,18 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .icon {
     width: 44px; height: 44px; border-radius: 50%; flex: none;
     color: var(--hc-idle); background: color-mix(in srgb, var(--hc-idle) 15%, transparent);
-    transition: background .3s, color .3s;
+    transition: background .3s, color .3s; position: relative;
   }
   .pumping .head .icon { color: var(--hc-pump); background: color-mix(in srgb, var(--hc-pump) 15%, transparent); }
   .dhw .head .icon { color: var(--hc-dhw); background: color-mix(in srgb, var(--hc-dhw) 15%, transparent); }
   .coldwater .head .icon { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 15%, transparent); }
+  /* Cold water: hide the icon's own drop and let a drop fall from the spout. */
+  #drip {
+    display: none; position: absolute; left: 27px; top: 23px; width: 4px; height: 4px; pointer-events: none;
+    background: currentColor; border-radius: 0 50% 50% 50%; transform: rotate(45deg);
+  }
+  .coldwater #flame { clip-path: polygon(0 0, 100% 0, 100% 58%, 66% 58%, 66% 100%, 0 100%); }
+  .coldwater #drip { display: block; animation: drop 1.1s ease-in infinite; }
   .burning .head .icon { color: var(--hc-fire); background: color-mix(in srgb, var(--hc-fire) 20%, transparent); }
   .alert .head .icon { color: var(--hc-warn); background: color-mix(in srgb, var(--hc-warn) 20%, transparent); }
   .offline .head .icon { color: var(--hc-offline); background: color-mix(in srgb, var(--hc-offline) 15%, transparent); }
@@ -205,6 +212,11 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     0%   { clip-path: inset(0 0 45% 0); }
     100% { clip-path: inset(0 0 0 0); }
   }
+  @keyframes drop {
+    0%   { transform: translateY(0)   rotate(45deg) scale(.3); opacity: 0; }
+    25%  { transform: translateY(0)   rotate(45deg) scale(1);  opacity: 1; }
+    100% { transform: translateY(9px) rotate(45deg) scale(1);  opacity: 0; }
+  }
   @keyframes drip {
     0%   { transform: translateY(-2px); opacity: .5; }
     60%  { transform: translateY(1px);  opacity: 1;  }
@@ -219,7 +231,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     80%  { transform: rotate(-1.8deg) scaleY(.97);  opacity: .85;}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
-  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #drop { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #drop { animation: none !important; } .coldwater #flame { clip-path: none; } .coldwater #drip { display: none; } }
   @media (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
@@ -291,7 +303,7 @@ class HeatingControlCard extends HTMLElement {
       <ha-card>
         <div id="fault"><ha-icon icon="mdi:alert-octagon"></ha-icon><div>Boiler fault<small>The boiler reports a fault. Check its display; heating may not work.</small></div></div>
         <div class="head">
-          <button class="icon" id="icon" title="Boiler"><ha-icon id="flame" icon="mdi:fire-off"></ha-icon></button>
+          <button class="icon" id="icon" title="Boiler"><ha-icon id="flame" icon="mdi:fire-off"></ha-icon><span id="drip"></span></button>
           <div class="htext" id="htext">
             <div class="title" id="title"></div>
             <div class="winner" id="winner"></div>
