@@ -31,7 +31,7 @@ The card writes to **one thing only**: `climate.virtual_thermostat_*` (`climate.
 | `fault` | `binary_sensor.main_thermostat_fault_indication` | OpenTherm general fault bit |
 | `pressure` | `sensor.thermostat_water_pressure_in_ch_circuit` | warnings below `pressure_min` 1.4 / above `pressure_max` 2.7 bar |
 | `colors` | map of `COLORS` keys | each key sets one `--hc-*` custom property on the host (inline beats `:host`); unknown keys warn. Keep README color table in sync with `COLORS` |
-| `water_flow` | none (optional) | L/min. Shown only when > 0. With no winner, offline or fault it replaces the status line (class `flowhead`, header tap opens the flow sensor): "Hot water at 6.2 L/min" in `--hc-dhw` during DHW, else "Cold water at 4.0 L/min" in `--hc-water`. Otherwise its own `#water` note with a dripping `mdi:water`. 0/unavailable/unset shows nothing |
+| `water_flow` | none (optional) | L/min. Shown only when > 0. Text "Hot water at 6.2 L/min" (`--hc-dhw`) during DHW, else "Cold water at 4.0 L/min" (`--hc-water`), "Water at" while offline. With no winner, offline or fault it replaces the status line (class `flowhead`, header tap opens the flow sensor). Otherwise it is `#flowline` under the sub line, with a dripping `mdi:water`. Never a tinted note row. 0/unavailable/unset shows nothing |
 | living room `paused` | `input_boolean.garden_heating_paused` | row locked while on (resume snapshot would overwrite changes) |
 
 The winner `area` is matched to a row via the thermostat's area (entity area, else device area, same as Jinja `area_name()`), from `hass.entities`, `hass.devices`, `hass.areas`.

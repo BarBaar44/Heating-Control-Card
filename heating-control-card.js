@@ -33,9 +33,9 @@
  *    warnings (the safety valve opens at 3 bar).
  *  - water_flow (optional, e.g. sensor.watermeterkit_water_meter_kit_current_
  *    usage): L/min, 0 when no water flows. Shown only while it is above 0.
- *    With no winning room it replaces the status line: "Hot water at 6.2
- *    L/min" during a hot water run, else "Cold water at 4.0 L/min".
- *    Otherwise it gets its own water line.
+ *    "Hot water at 6.2 L/min" during a hot water run, else "Cold water at
+ *    4.0 L/min". With no winning room it replaces the status line, else it
+ *    is a small line under the room's temperatures.
  *  - binary_sensor.main_thermostat_fault_indication: OpenTherm fault flag.
  *    When on, the whole card turns red and a banner says so first. OpenTherm
  *    sends only this one bit, not the code on the boiler display, so the
@@ -153,9 +153,12 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .fault .winner { color: var(--hc-err); }
   #sched { color: var(--secondary-text-color); background: var(--hc-soft); }
 
-  /* Water flow: the meter counts all water, so it never joins "Hot water". */
-  #water { color: var(--hc-water); background: color-mix(in srgb, var(--hc-water) 12%, transparent); }
-  #water.show #drop { animation: drip 1.4s ease-in infinite; }
+  /* Water flow under the status line while a room wins (or a fault shows). */
+  .flowline { display: none; align-items: center; gap: 3px; font-size: 12px; font-weight: 500; color: var(--hc-water); white-space: nowrap; }
+  .flowline.show { display: flex; }
+  .flowline.hot { color: var(--hc-dhw); }
+  .flowline ha-icon { --mdc-icon-size: 14px; flex: none; }
+  .flowline.show #drop { animation: drip 1.4s ease-in infinite; }
   .flowhead .winner { color: var(--hc-water); }
   .flowhead.dhw .winner { color: var(--hc-dhw); }
 
@@ -215,7 +218,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     80%  { transform: rotate(-1.8deg) scaleY(.97);  opacity: .85;}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
-  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #water #drop { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #drop { animation: none !important; } }
   @media (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
@@ -292,11 +295,11 @@ class HeatingControlCard extends HTMLElement {
             <div class="title" id="title"></div>
             <div class="winner" id="winner"></div>
             <div class="sub" id="sub"></div>
+            <div class="flowline" id="flowline"><ha-icon id="drop" icon="mdi:water"></ha-icon><span id="flowText"></span></div>
           </div>
           <button class="mode" id="hmode"><ha-icon id="hmicon" icon="mdi:radiator-off"></ha-icon></button>
         </div>
         <div class="note" id="sched"><ha-icon icon="mdi:calendar-clock"></ha-icon><span>Central heating is off by schedule</span></div>
-        <div class="note" id="water"><ha-icon id="drop" icon="mdi:water"></ha-icon><span id="waterText"></span></div>
         <div class="note" id="warn"><ha-icon icon="mdi:alert"></ha-icon><span id="warnText"></span></div>
         <div class="rooms" id="rooms"></div>
       </ha-card>`;
@@ -305,14 +308,14 @@ class HeatingControlCard extends HTMLElement {
       card: this.shadowRoot.querySelector("ha-card"),
       title: $("title"), winner: $("winner"), sub: $("sub"), flame: $("flame"),
       hmode: $("hmode"), hmicon: $("hmicon"),
-      water: $("water"), waterText: $("waterText"),
+      flowline: $("flowline"), flowText: $("flowText"),
       sched: $("sched"), warn: $("warn"), warnText: $("warnText"), rooms: $("rooms"),
     };
     $("icon").addEventListener("click", () => this._moreInfo(this._iconTarget));
     $("htext").addEventListener("click", () => this._moreInfo(this._flowHead ? this._config.water_flow : this._winnerEntity || this._config.heating_area));
     $("fault").addEventListener("click", () => this._moreInfo(this._config.fault));
     $("hmode").addEventListener("click", () => this._single && this._modeTap(this._single));
-    $("water").addEventListener("click", () => this._moreInfo(this._config.water_flow));
+    $("flowline").addEventListener("click", (ev) => { ev.stopPropagation(); this._moreInfo(this._config.water_flow); });
     $("sched").addEventListener("click", () => this._moreInfo(this._config.ch_enabled));
     $("warn").addEventListener("click", () => this._moreInfo(this._config.pressure));
   }
@@ -439,12 +442,16 @@ class HeatingControlCard extends HTMLElement {
     const flowState = this._state(c.water_flow);
     const flow = flowState ? num(flowState.state) : null;
     const flowing = flow !== null && flow > 0;
-    // With no winning room (and no offline or fault text) the flow takes the
-    // status line: hot during a hot water run, else cold. Else its own line.
+    // Hot during a hot water run, else cold; offline we cannot tell. With no
+    // winning room (and no offline or fault text) the flow takes the status
+    // line, else it is a small line under the temperatures.
+    const flowText = flowing ? `${offline ? "Water" : dhw ? "Hot water" : "Cold water"} at ${flow.toFixed(1)} L/min` : "";
     this._flowHead = flowing && !offline && !fault && !w.area;
-    if (this._flowHead) e.winner.textContent = `${dhw ? "Hot" : "Cold"} water at ${flow.toFixed(1)} L/min`;
-    e.water.classList.toggle("show", flowing && !this._flowHead);
-    e.waterText.textContent = flowing && !this._flowHead ? `Water · ${flow.toFixed(1)} L/min` : "";
+    if (this._flowHead) e.winner.textContent = flowText;
+    const flowLine = flowing && !this._flowHead;
+    e.flowline.classList.toggle("show", flowLine);
+    e.flowline.classList.toggle("hot", flowLine && dhw);
+    e.flowText.textContent = flowLine ? flowText : "";
 
     let icon = "mdi:fire-off";
     if (offline) icon = "mdi:lan-disconnect";
