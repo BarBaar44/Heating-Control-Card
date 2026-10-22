@@ -105,7 +105,7 @@ const STYLE = `
 ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     --hc-soft: var(--secondary-background-color, rgba(127,127,127,.15));
   }
-  ha-card { padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
+  ha-card { container-type: inline-size; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
   button {
     border: none; font: inherit; cursor: pointer; padding: 0;
     display: flex; align-items: center; justify-content: center;
@@ -173,7 +173,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   /* Rooms */
   .rooms { display: flex; flex-direction: column; gap: 4px; }
   .row {
-    display: grid; grid-template-columns: minmax(0,1fr) minmax(64px,1fr) auto 34px; align-items: center; gap: 8px;
+    display: grid; grid-template-columns: minmax(0,3fr) minmax(56px,2fr) auto 34px; align-items: center; gap: 8px;
     padding: 6px 6px 6px 10px; border-radius: 12px; border: 1px solid transparent;
   }
   .row.win { border-color: color-mix(in srgb, var(--hc-fire) 45%, transparent); background: color-mix(in srgb, var(--hc-fire) 8%, transparent); }
@@ -203,7 +203,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   /* One room: its Heat/Off sits in the header, the row loses that column. */
   #hmode { display: none; flex: none; }
   .single #hmode { display: flex; }
-  .single .row { grid-template-columns: minmax(0,1fr) minmax(64px,1fr) auto; }
+  .single .row { grid-template-columns: minmax(0,3fr) minmax(56px,2fr) auto; }
   .single .row .mode { display: none; }
   #hmode.heat { background: var(--hc-heat); color: #fff; }
   #hmode.paused { color: var(--hc-heat); opacity: 1; cursor: pointer; }
@@ -233,7 +233,8 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
     100% { transform: rotate(-1.5deg) scaleY(1);    opacity: .9; }
   }
   @media (prefers-reduced-motion: reduce) { .burning #flame, .dhw #flame, #fault, #drop { animation: none !important; } .coldwater #flame { clip-path: none; } .coldwater #drip { display: none; } }
-  @media (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
+  /* Narrow card (phone, small grid cell): room name and role get the space. */
+  @container (max-width: 360px) { .row { gap: 4px; } .rcur { font-size: 18px; } .rcur ha-icon { display: none; } }
 `;
 
 class HeatingControlCard extends HTMLElement {

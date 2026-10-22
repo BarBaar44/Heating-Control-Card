@@ -13,6 +13,7 @@ HACS dashboard card (Lovelace) for the multi-room heating in
 | `shot.png` | README screenshot, linked by absolute raw URL so it renders in HACS. |
 | `examples.png` | README grid of six states (one room and all rooms; hot/cold water, heating, fault), rendered from the real card in headless Chromium with stub `ha-card`/`ha-icon` (`@mdi/js` paths) and a fake `hass`. Regenerate when the look changes. |
 | `multi-room.png` | README example with six rooms covering every row role (Heating, Heating along, Pumping, Pumping along, Reached, Off, Paused) and the low pressure warning. Same render setup; regenerate with `examples.png`. |
+| `multi-room-card.png` | One six-room card at 372 px card width, rendered 2x, page width 412 px like `shot.png`. Used in the BarBaar44/thermostat README with `<img width="412">` so it shows at the same scale as `shot.png`. |
 | `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only. Must stay green. |
 
 Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/BarBaar44/EV-Trip-Card): header comment with repo URL and MIT, `VERSION` constant, `DEFAULTS` block, console banner, README with feature bullets, Install line, option/default table, Licence.
@@ -56,6 +57,7 @@ Row roles: Heating / Pumping (winner), Heating along / Pumping along (below targ
 - Setpoint taps are debounced per room: optimistic value at once, one service call 0.8 s after the last tap, pending value dropped when HA confirms or after 5 s.
 - Rows are rebuilt only when the room set changes; otherwise updated in place (keeps pending timers).
 - 0.2 configs with `climate:` still work as a one-room list. When `thermostats` is set, `climate`/`name`/`paused` are ignored and a console warning is logged.
+- Row grid is `3fr / 2fr` for name and room temperature (the same in every row, so temperatures line up). The card is a size container: at 360 px content width or less the thermometer icon hides and gaps shrink. Long role texts end in an ellipsis.
 - A one-room `thermostats` list is a supported, intended setup (the owner's own dashboard uses it). With one visible room the card gets class `single`: the row's Heat/Off button is hidden and mirrored as `#hmode` in the header. It is still that room's `set_hvac_mode`, never the `ch_enabled` switch.
 
 ## Releasing
