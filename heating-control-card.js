@@ -179,8 +179,9 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .row.win { border-color: color-mix(in srgb, var(--hc-fire) 45%, transparent); background: color-mix(in srgb, var(--hc-fire) 8%, transparent); }
   .rinfo { min-width: 0; cursor: pointer; }
   .rname { font-size: 14px; font-weight: 500; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rrole { font-size: 11px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-  .rrole ha-icon { --mdc-icon-size: 13px; }
+  .rrole { font-size: 11px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 3px; white-space: nowrap; overflow: hidden; }
+  .rrole ha-icon { --mdc-icon-size: 13px; flex: none; }
+  .rtext { overflow: hidden; text-overflow: ellipsis; }
   .row.win .rrole { color: var(--hc-fire); font-weight: 600; }
   .row.along .rrole { color: var(--hc-heat); }
   .row.paused .rrole { color: var(--hc-heat); }

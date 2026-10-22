@@ -12,6 +12,7 @@ HACS dashboard card (Lovelace) for the multi-room heating in
 | `README.md` | User docs, also the HACS info page. Keep the option table in sync with `DEFAULTS`. |
 | `shot.png` | README screenshot, linked by absolute raw URL so it renders in HACS. |
 | `examples.png` | README grid of six states (one room and all rooms; hot/cold water, heating, fault), rendered from the real card in headless Chromium with stub `ha-card`/`ha-icon` (`@mdi/js` paths) and a fake `hass`. Regenerate when the look changes. |
+| `multi-room.png` | README example with six rooms covering every row role (Heating, Heating along, Pumping, Pumping along, Reached, Off, Paused) and the low pressure warning. Same render setup; regenerate with `examples.png`. |
 | `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only. Must stay green. |
 
 Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/BarBaar44/EV-Trip-Card): header comment with repo URL and MIT, `VERSION` constant, `DEFAULTS` block, console banner, README with feature bullets, Install line, option/default table, Licence.

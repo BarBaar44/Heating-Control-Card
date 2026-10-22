@@ -31,6 +31,10 @@ With a single room its Heat/Off button sits in the header, on the line with "All
 
 ![Heating Control Card examples](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/examples.png)
 
+With several thermostats every room shows its role, the room the boiler heats for is highlighted:
+
+![Heating Control Card with several rooms](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room.png)
+
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
 
 ## How it fits the backend
