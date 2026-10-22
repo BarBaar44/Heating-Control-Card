@@ -2,9 +2,9 @@
 
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
-One Lovelace card for every virtual thermostat in the house and the boiler behind them, built for the multi-room heating in [BarBaar44/thermostat](https://github.com/BarBaar44/thermostat).
+One Lovelace card for every room of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat) and the boiler behind them.
 
-* **Header:** the room the boiler is heating for right now, the Tier 1 winner from `sensor.delta_temperature`, with its current and target temperature and what the boiler does ("Office · 18.0° → 20.0° · boiler heating · 45%"). With no winner it says "Heating off" when no room is set to heat or the schedule has central heating off, "All rooms at target" when rooms are in heat but none needs more, or "Hot water" while the boiler runs for the tap.
+* **Header:** the room the boiler is heating for right now (the winner), with its current and target temperature and what the boiler does ("Office · 18.0° → 20.0° · boiler heating · 45%"). With no winner it says "Heating off" when no room is set to heat or central heating is switched off, "Heating off · nobody home" when everybody is away, "Heating paused" when every heating room is held off, "All rooms at target" when rooms are in heat but none needs more, or "Hot water" while the boiler runs for the tap.
 * **Boiler activity:** CH active alone does not mean the burner fires, so the flame sensor decides:
 
   | CH active | Hot water | Flame | Shown |
@@ -15,12 +15,12 @@ One Lovelace card for every virtual thermostat in the house and the boiler behin
   | off | off | off | boiler idle |
 
   The flame flickers only while the burner fires for heating. During a hot water run the header shows an amber shower head with falling water. Both animations stop when the system asks for reduced motion. Without a flame entity, CH active counts as heating.
-* **Thermostat offline:** when the CH active or flame entity is unavailable or unknown (the ESPHome thermostat reboots or loses its connection), the header says "Thermostat offline" with a grey icon instead of guessing. The rows keep working; the virtual thermostats live in HA itself.
+* **Thermostat offline:** when the CH active or flame entity is unavailable or unknown (the ESPHome thermostat reboots or loses its connection), the header says "Thermostat offline" with a grey icon instead of guessing. The rows keep working; the room climates live in HA itself.
 * **Boiler fault:** when `binary_sensor.main_thermostat_fault_indication` is on, the card gets a red border, a pulsing red "Boiler fault" banner on top and a red header. Tap the banner for the fault sensor. OpenTherm only sends one general fault bit, not the code on the boiler display (such as C1 51), so the card tells you to check the display and does not interpret anything.
-* **Rooms:** one row per `climate.virtual_thermostat_*` with room temperature, target with − and +, and Heat/Off. Each row shows its role in the two-tier model: **Heating** (the winner, highlighted), **Pumping** (the winner while the burner is off), **Heating along** or **Pumping along** (below target while the boiler runs for another room), **Calls for heat**, **Reached**, **Off** or **Paused**.
-* **Batched taps:** the new target shows at once and one `climate.set_temperature` goes out 0.8 s after the last tap, so TRV Setpoint Sync runs once per adjustment.
-* **Garden doors:** while `input_boolean.garden_heating_paused` is on, the living room row says "Paused · garden doors open" and is locked. The pause and resume scripts own that thermostat then; a change made here would be overwritten by the resume snapshot.
-* **Schedule:** when a room is in heat but the schedule has `switch.main_thermostat_central_heating_enabled` off, a note says central heating is off by schedule. The card never touches that switch.
+* **Rooms:** one row per room with room temperature, target with − and +, and Heat/Off. Each row shows its role in the two-tier model: **Heating** (the winner, highlighted), **Pumping** (the winner while the burner is off), **Heating along** or **Pumping along** (below target while the boiler runs for another room), **Calls for heat**, **Reached**, **Off** or **Paused**.
+* **Batched taps:** the new target shows at once and one `climate.set_temperature` goes out 0.8 s after the last tap, so the TRVs are written once per adjustment.
+* **Paused rooms:** a room the integration holds off says why: "Paused · window open", "Paused · nobody home" or "Paused". Its target can still be changed; the room picks it up when the pause ends.
+* **Central heating switch:** when a room is in heat but the `ch_enabled` switch is off, a note says central heating is off. The card never touches that switch.
 * **Pressure:** a red warning line appears when CH pressure drops below `pressure_min` or rises above `pressure_max`. The safety valve opens at 3 bar.
 * **Water flow (optional):** with `water_flow` set to a water meter in L/min, the flow shows while water runs. It reads "Hot water at 6.2 L/min" (amber) during a hot water run, else "Cold water at 4.0 L/min" (light blue) with a light blue water pump as the header icon while the boiler is idle, a drop falling from its spout. With no room being heated it replaces the status line; while a room is being heated, or during a fault, it is a small line with a dripping drop under the room's temperatures. At 0 or unavailable nothing shows. Tap it for the sensor.
 * **Colors:** every state color is configurable, see below.
@@ -37,11 +37,13 @@ With several thermostats every room shows its role, the room the boiler heats fo
 
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
 
-## How it fits the backend
+## How it fits the integration
 
-The card writes only to the `climate.virtual_thermostat_*` entities, the single source of truth. Everything downstream (TRVs, the +1 °C buffer for the winner, the boiler setpoint) is TRV Setpoint Sync's job, exactly as with any other change to a virtual thermostat.
+The card writes only to the room climates of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat), the single source of truth per room. Everything downstream (TRVs, the overshoot buffer for the winner, the boiler setpoint) is the integration's job, exactly as with any other change to a room.
 
-The winner's `area` from `sensor.delta_temperature` is matched to a row by the thermostat's area (its own, else its device's, the same as `area_name()`). A plain area sensor such as `sensor.virtual_heating_area` works too, but then the header has no temperatures.
+The rooms tell the card which one is the winner and why a room is paused, so no extra sensor is needed.
+
+**Without the integration** the card still works with the original YAML setup: it then shows every `climate.virtual_thermostat_*`, takes the winner from `sensor.delta_temperature` (JSON `area`, `target`, `curr`; matched to a row by the thermostat's area), and locks the living room while `input_boolean.garden_heating_paused` is on, because the pause and resume scripts own it then.
 
 ## Install
 
@@ -53,14 +55,14 @@ HACS > three dots > Custom repositories > add `https://github.com/BarBaar44/Heat
 type: custom:heating-control-card
 ```
 
-That shows every virtual thermostat, sorted by room. To pick and order rooms, or rename one:
+That shows every room, sorted by name. To pick and order rooms, or rename one:
 
 ```yaml
 type: custom:heating-control-card
 thermostats:
-  - climate.virtual_thermostat_living_room
-  - climate.virtual_thermostat_office
-  - entity: climate.virtual_thermostat_room_tim
+  - climate.living_room
+  - climate.office
+  - entity: climate.room_tim
     name: Tim
 ```
 
@@ -69,9 +71,9 @@ All options are optional:
 | Option | Default |
 |---|---|
 | `title` | `Heating` |
-| `thermostats` | every `climate.virtual_thermostat_*`, sorted by room. A list of entities, or objects with `entity`, `name`, `paused`, `step`, `on_mode` |
+| `thermostats` | every room of the integration (without it: every `climate.virtual_thermostat_*`), sorted by name. A list of entities, or objects with `entity`, `name`, `paused`, `step`, `on_mode` |
 | `show_off` | `true`. With `false`, rooms that are off are hidden |
-| `heating_area` | `sensor.delta_temperature` |
+| `heating_area` | `sensor.delta_temperature`, only used without the integration |
 | `boiler` | `binary_sensor.main_thermostat_central_heating_active` |
 | `hot_water` | `binary_sensor.main_thermostat_domestic_hot_water_active` |
 | `flame` | `binary_sensor.diyless_thermostat_flame_on` |
@@ -86,7 +88,7 @@ All options are optional:
 | `on_mode` | `heat` |
 | `colors` | see below |
 
-The living room's `paused` defaults to `input_boolean.garden_heating_paused`; other rooms have none. Set any entity option to `null` to switch that part off. The card also has a visual editor in the dashboard UI.
+A room's `paused` is an entity that locks its row while on; without the integration the living room's defaults to `input_boolean.garden_heating_paused`. The boiler entity defaults are the names of an ESPHome OpenTherm thermostat ([`thermostat.yaml`](https://github.com/BarBaar44/thermostat/blob/main/thermostat.yaml)); point them at your own. Set any entity option to `null` to switch that part off. The card also has a visual editor in the dashboard UI.
 
 ### Colors
 
