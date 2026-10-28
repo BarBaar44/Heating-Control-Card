@@ -1,7 +1,7 @@
 # Heating Control Card: notes for working on this repo
 
-HACS dashboard card (Lovelace) for the multi-room heating in
-[BarBaar44/thermostat](https://github.com/BarBaar44/thermostat). Owner: BarBaar44 (Bb).
+HACS dashboard card (Lovelace) for [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat),
+the multi-room heating integration. It still supports the original YAML setup (until the owner's own house has migrated). Owner: BarBaar44 (Bb).
 
 ## Files
 
@@ -20,12 +20,19 @@ Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/
 
 ## Backend contract
 
-The card writes to **one thing only**: `climate.virtual_thermostat_*` (`climate.set_temperature`, `climate.set_hvac_mode`). TRVs, the +1 °C buffer and the boiler setpoint are TRV Setpoint Sync's job in the thermostat repo. Never write to the boiler climate, TRVs, the schedule switch or the pause helper.
+The card writes to **one thing only**: the room climates (`climate.set_temperature`, `climate.set_hvac_mode`). TRVs, the overshoot buffer and the boiler setpoint are the integration's job (or, in the YAML setup, TRV Setpoint Sync's). Never write to the boiler climate, TRVs, the central heating switch or a pause helper.
+
+**Integration rooms** are climates whose `hass.entities[id].platform` is `cloudless_multiroom_thermostat`. Without a `thermostats` list the card shows those; only when there are none it falls back to `climate.virtual_thermostat_*`. For integration rooms:
+
+- the winner is the room with attribute `is_winner: true` (header temps from `current_temperature` and `effective_target`); `heating_area` is ignored;
+- `paused_reason` (`window`, `away`, `manual`) gives role "Paused · window open", "Paused · nobody home" or "Paused". The row stays editable (the integration keeps the room's target during a pause); only a `paused` entity locks a row;
+- the label is the room's friendly name (the room name), not its area;
+- header without a winner: "Heating off · nobody home" when every room in heat is paused for away, "Heating paused" when every room in heat is paused for any reason.
 
 | Option | Default entity | Used for |
 |---|---|---|
-| `thermostats` | all `climate.virtual_thermostat_*` | rows; list of entities or `{entity, name, paused, step, on_mode}` |
-| `heating_area` | `sensor.delta_temperature` | Tier 1 winner. State is JSON `{"area","target","curr","delta"}`; `area: "Off"` means no winner. A plain area sensor also works. |
+| `thermostats` | integration rooms, else all `climate.virtual_thermostat_*` | rows; list of entities or `{entity, name, paused, step, on_mode}` |
+| `heating_area` | `sensor.delta_temperature` | YAML setup only: the winner. State is JSON `{"area","target","curr","delta"}`; `area: "Off"` means no winner. A plain area sensor also works. |
 | `boiler` | `binary_sensor.main_thermostat_central_heating_active` | CH mode (not the same as burning) |
 | `hot_water` | `binary_sensor.main_thermostat_domestic_hot_water_active` | DHW run |
 | `flame` | `binary_sensor.diyless_thermostat_flame_on` | burner actually firing |
@@ -35,9 +42,9 @@ The card writes to **one thing only**: `climate.virtual_thermostat_*` (`climate.
 | `pressure` | `sensor.thermostat_water_pressure_in_ch_circuit` | warnings below `pressure_min` 1.4 / above `pressure_max` 2.7 bar |
 | `colors` | map of `COLORS` keys | each key sets one `--hc-*` custom property on the host (inline beats `:host`); unknown keys warn. Keep README color table in sync with `COLORS` |
 | `water_flow` | none (optional) | L/min. Shown only when > 0. Text "Hot water at 6.2 L/min" (`--hc-dhw`) during DHW, else "Cold water at 4.0 L/min" (`--hc-water`), "Water at" while offline. With no winner, offline or fault it replaces the status line (class `flowhead`, header tap opens the flow sensor). Otherwise it is `#flowline` under the sub line, with a dripping `mdi:water`. Never a tinted note row. 0/unavailable/unset shows nothing |
-| living room `paused` | `input_boolean.garden_heating_paused` | row locked while on (resume snapshot would overwrite changes) |
+| living room `paused` | `input_boolean.garden_heating_paused` (YAML setup only) | row locked while on (resume snapshot would overwrite changes) |
 
-The winner `area` is matched to a row via the thermostat's area (entity area, else device area, same as Jinja `area_name()`), from `hass.entities`, `hass.devices`, `hass.areas`.
+In the YAML setup the winner `area` is matched to a row via the thermostat's area (entity area, else device area, same as Jinja `area_name()`), from `hass.entities`, `hass.devices`, `hass.areas`.
 
 ## State logic (header)
 
@@ -46,7 +53,7 @@ Priority, highest first: **offline** → **fault** → winner / no winner text.
 - Offline: `boiler` or `flame` entity is `unavailable`/`unknown`. Header "Thermostat offline", grey `mdi:lan-disconnect`; fault and pressure stay quiet; rows keep working.
 - Fault: red border, pulsing banner, red header "Boiler fault". OpenTherm sends no display code (e.g. C1 51): **do not add code interpretation**, the banner says to check the boiler display.
 - Activity: hot water wins (combi). Then CH + flame = heating (with %), CH without flame = pumping, else idle. No flame entity: CH active counts as heating.
-- No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the schedule switch is off, otherwise "All rooms at target".
+- No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the `ch_enabled` switch is off, "Heating off · nobody home" / "Heating paused" (integration rooms, see above), otherwise "All rooms at target".
 - Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, amber) > `mdi:water-pump` (cold water flowing, light blue, class `coldwater`, taps open the flow sensor) > `mdi:fire-off`.
 - Animations: flame flicker (`.burning`), falling water shower (`.dhw`) and a drop falling from the water pump spout (`.coldwater`: the icon's own drop is clipped away and `#drip` falls instead) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
 
@@ -68,7 +75,7 @@ Row roles: Heating / Pumping (winner), Heating along / Pumping along (below targ
 
 ## Testing
 
-No test suite. Before pushing: `node --check heating-control-card.js`, then load the file in jsdom with a fake `hass` (`states`, `entities`, `devices`, `areas`, `callService`) and check header text, icon, card classes and row roles for: heating, pumping, hot water, hot water + CH, idle, offline, fault, low/high pressure, garden pause, schedule off, explicit list, legacy `climate`, and that taps send one batched call.
+No test suite. Before pushing: `node --check heating-control-card.js`, then load the file in jsdom with a fake `hass` (`states`, `entities`, `devices`, `areas`, `callService`) and check header text, icon, card classes and row roles for: heating, pumping, hot water, hot water + CH, idle, offline, fault, low/high pressure, garden pause, schedule off, explicit list, legacy `climate`, and that taps send one batched call. With integration rooms also: only its climates are listed and named after the room, winner from `is_winner` (a leftover `sensor.delta_temperature` is ignored), window / away / manual pause texts with the row still editable, all rooms away, and an off room showing Off.
 
 ## Not possible
 

@@ -3,18 +3,19 @@
  * One Lovelace card for every virtual thermostat in the house and the boiler
  * behind them, built for https://github.com/BarBaar44/thermostat
  *
- * Header: the room the boiler is heating for (the Tier 1 winner from
- * sensor.delta_temperature), its current and target temperature, what the
- * boiler is doing, schedule and pressure notes.
- * Rows: one per climate.virtual_thermostat_*, each with room temperature,
- * target with - and +, Heat/Off, and its role (heating, heating along,
- * reached, off, paused).
+ * Header: the room the boiler is heating for (the winner), its current and
+ * target temperature, what the boiler is doing, schedule and pressure notes.
+ * Rows: one per room climate, each with room temperature, target with - and
+ * +, Heat/Off, and its role (heating, heating along, reached, off, paused).
  *
  * What it reads from that backend:
- *  - climate.virtual_thermostat_*: the single source of truth per room. The
- *    card only ever writes here; TRV Setpoint Sync takes it from there.
- *  - sensor.delta_temperature: JSON {"area","target","curr","delta"}. A plain
- *    area sensor (e.g. sensor.virtual_heating_area) works too.
+ *  - The room climates of the Cloudless Multiroom Thermostat integration:
+ *    the single source of truth per room, the card only ever writes here.
+ *    Their attributes say which room is the winner (is_winner) and why a
+ *    room is paused (paused_reason: window, away, manual).
+ *  - Without the integration: climate.virtual_thermostat_* and
+ *    sensor.delta_temperature, JSON {"area","target","curr","delta"} (a plain
+ *    area sensor such as sensor.virtual_heating_area works too).
  *  - binary_sensor.main_thermostat_central_heating_active / ..._domestic_hot_
  *    water_active: the mode the boiler is in. CH active alone does not mean
  *    the burner fires: it can just be pumping water that is already warm.
@@ -27,8 +28,10 @@
  *    working, the virtual thermostats live in HA itself.
  *  - switch.main_thermostat_central_heating_enabled: owned by the Heating
  *    Schedule. The card reports it, never touches it.
- *  - input_boolean.garden_heating_paused (living room only): while set, the
- *    pause/resume scripts own that thermostat, so its row is locked.
+ *  - Without the integration, input_boolean.garden_heating_paused (living
+ *    room only): while set, the pause/resume scripts own that thermostat, so
+ *    its row is locked. Integration rooms are never locked: a paused room
+ *    keeps its own target.
  *  - sensor.thermostat_water_pressure_in_ch_circuit: low and high pressure
  *    warnings (the safety valve opens at 3 bar).
  *  - water_flow (optional, e.g. sensor.watermeterkit_water_meter_kit_current_
@@ -49,14 +52,17 @@
 
 const VERSION = "0.7.2";
 
+const INTEGRATION = "cloudless_multiroom_thermostat";
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
 const LIVING_ROOM_PAUSED = "input_boolean.garden_heating_paused";
 
 const DEFAULTS = {
   title: "Heating",
-  // null: every climate.virtual_thermostat_* entity, sorted by name.
+  // null: every room climate of the integration, else every
+  // climate.virtual_thermostat_* entity, sorted by name.
   thermostats: null,
+  // Only used when the rooms don't come from the integration.
   heating_area: "sensor.delta_temperature",
   boiler: "binary_sensor.main_thermostat_central_heating_active",
   hot_water: "binary_sensor.main_thermostat_domestic_hot_water_active",
@@ -344,6 +350,14 @@ class HeatingControlCard extends HTMLElement {
     return !!s && s.state === "on";
   }
 
+  // Why an integration room is held off: "window", "away", "manual" or null.
+  _pauseReason(room) {
+    if (!room.integration) return null;
+    const s = this._state(room.entity);
+    const reason = s && s.attributes.paused_reason;
+    return reason ? String(reason) : null;
+  }
+
   // The area name HA's area_name() gives: the entity's own area, else its device's.
   _areaOf(entityId) {
     const h = this._hass;
@@ -354,7 +368,14 @@ class HeatingControlCard extends HTMLElement {
     return areaId && h.areas && h.areas[areaId] ? h.areas[areaId].name : null;
   }
 
-  // Configured rooms, or every virtual thermostat sorted by name.
+  // A room climate of the Cloudless Multiroom Thermostat integration.
+  _isIntegration(entityId) {
+    const ent = this._hass.entities && this._hass.entities[entityId];
+    return !!ent && ent.platform === INTEGRATION;
+  }
+
+  // Configured rooms, else the integration's rooms, else every virtual
+  // thermostat; sorted by name.
   _rooms() {
     const c = this._config;
     if (!c || !this._hass) return [];
@@ -362,19 +383,41 @@ class HeatingControlCard extends HTMLElement {
     if (c.thermostats) {
       list = c.thermostats.map((t) => (typeof t === "string" ? { entity: t } : { ...t })).filter((t) => t.entity);
     } else {
-      list = Object.keys(this._hass.states).filter((id) => id.startsWith(PREFIX)).map((entity) => ({ entity }));
+      const ids = Object.keys(this._hass.states).filter((id) => id.startsWith("climate."));
+      const own = ids.filter((id) => this._isIntegration(id));
+      list = (own.length ? own : ids.filter((id) => id.startsWith(PREFIX))).map((entity) => ({ entity }));
     }
     list.forEach((t) => {
-      if (t.paused === undefined) t.paused = t.entity === LIVING_ROOM ? LIVING_ROOM_PAUSED : null;
       const s = this._state(t.entity);
-      t.label = t.name || this._areaOf(t.entity) || (s && s.attributes.friendly_name) || t.entity;
+      t.integration = this._isIntegration(t.entity);
+      if (t.paused === undefined) t.paused = !t.integration && t.entity === LIVING_ROOM ? LIVING_ROOM_PAUSED : null;
+      // Integration rooms are named after the room itself; legacy thermostats after their area.
+      t.label = t.integration
+        ? t.name || (s && s.attributes.friendly_name) || this._areaOf(t.entity) || t.entity
+        : t.name || this._areaOf(t.entity) || (s && s.attributes.friendly_name) || t.entity;
     });
     if (!c.thermostats) list.sort((a, b) => a.label.localeCompare(b.label));
     return list;
   }
 
+  // Integration rooms say themselves which one wins (is_winner). Otherwise
   // sensor.delta_temperature holds JSON; a plain area sensor holds the name.
-  _winnerInfo() {
+  _winnerInfo(rooms) {
+    const own = rooms.filter((r) => r.integration);
+    if (own.length) {
+      const win = own.find((r) => {
+        const s = this._state(r.entity);
+        return s && s.attributes.is_winner === true;
+      });
+      if (!win) return { area: null, entity: null };
+      const a = this._state(win.entity).attributes;
+      return {
+        area: win.label,
+        entity: win.entity,
+        target: num(a.effective_target ?? a.temperature),
+        curr: num(a.current_temperature),
+      };
+    }
     const s = this._state(this._config.heating_area);
     if (!s) return { area: null };
     const raw = String(s.state);
@@ -420,16 +463,22 @@ class HeatingControlCard extends HTMLElement {
     const highP = !isNaN(p) && c.pressure_max != null && p > Number(c.pressure_max);
     const fault = !offline && this._on(c.fault);
 
-    const w = this._winnerInfo();
-    const winRoom = w.area ? rooms.find((r) => this._areaOf(r.entity) === w.area || r.label === w.area) : null;
+    const w = this._winnerInfo(rooms);
+    const winRoom = w.entity
+      ? rooms.find((r) => r.entity === w.entity)
+      : w.area ? rooms.find((r) => this._areaOf(r.entity) === w.area || r.label === w.area) : null;
     this._winnerEntity = winRoom ? winRoom.entity : null;
 
     // Header
     e.title.textContent = c.title || "";
-    const anyHeat = rooms.some((r) => {
+    const inHeat = rooms.filter((r) => {
       const s = this._state(r.entity);
       return s && s.state !== "off" && !BAD.includes(s.state);
     });
+    const anyHeat = inHeat.length > 0;
+    // Every room in heat held off by the integration (window, away, manual)
+    const allPaused = anyHeat && inHeat.every((r) => r.integration && this._pauseReason(r));
+    const awayAll = allPaused && inHeat.every((r) => this._pauseReason(r) === "away");
     const modText = mod !== null ? ` · ${Math.round(mod)}%` : "";
     let activity;
     if (offline) activity = "thermostat offline";
@@ -446,7 +495,11 @@ class HeatingControlCard extends HTMLElement {
       e.sub.textContent = [temps, activity].filter(Boolean).join(" · ");
     } else {
       // No winner: either nothing is set to heat, or every room is at target.
-      e.winner.textContent = dhw ? "Hot water" : !anyHeat || chDisabled ? "Heating off" : "All rooms at target";
+      e.winner.textContent = dhw ? "Hot water"
+        : !anyHeat || chDisabled ? "Heating off"
+        : awayAll ? "Heating off · nobody home"
+        : allPaused ? "Heating paused"
+        : "All rooms at target";
       e.sub.textContent = activity.charAt(0).toUpperCase() + activity.slice(1);
     }
     if (fault) {
@@ -529,7 +582,7 @@ class HeatingControlCard extends HTMLElement {
         this._rows.delete(id);
       }
     });
-    box.innerHTML = rooms.length ? "" : `<div class="empty">No virtual thermostats found</div>`;
+    box.innerHTML = rooms.length ? "" : `<div class="empty">No rooms found</div>`;
     rooms.forEach((room) => {
       const row = document.createElement("div");
       row.className = "row";
@@ -568,7 +621,11 @@ class HeatingControlCard extends HTMLElement {
     const unavailable = !s || BAD.includes(s.state);
     const a = s ? s.attributes : {};
     const isOff = !unavailable && s.state === "off";
-    const paused = this._on(room.paused);
+    // A legacy pause entity locks the row (the resume snapshot would undo a
+    // change); an integration pause does not (the room keeps its target).
+    const lockedPause = this._on(room.paused);
+    const reason = this._pauseReason(room);
+    const paused = lockedPause || (!!reason && !isOff);
 
     if (r.pending !== null && !r.timer && num(a.temperature) === r.pending) {
       r.pending = null;
@@ -583,7 +640,10 @@ class HeatingControlCard extends HTMLElement {
     // Role in the two-tier model
     let role, roleIcon;
     if (unavailable) { role = "Unavailable"; roleIcon = "mdi:help-circle-outline"; }
-    else if (paused) { role = "Paused · garden doors open"; roleIcon = "mdi:door-open"; }
+    else if (lockedPause) { role = "Paused · garden doors open"; roleIcon = "mdi:door-open"; }
+    else if (paused && reason === "window") { role = "Paused · window open"; roleIcon = "mdi:window-open-variant"; }
+    else if (paused && reason === "away") { role = "Paused · nobody home"; roleIcon = "mdi:home-export-outline"; }
+    else if (paused) { role = "Paused"; roleIcon = "mdi:pause"; }
     else if (isOff) { role = "Off"; roleIcon = "mdi:power"; }
     else if (isWinner && ctx.heating) { role = "Heating"; roleIcon = "mdi:fire"; }
     else if (isWinner && ctx.pumping) { role = "Pumping"; roleIcon = "mdi:pump"; }
@@ -598,7 +658,7 @@ class HeatingControlCard extends HTMLElement {
     f.cur.textContent = `${fmt(a.current_temperature)}°`;
     f.tgt.textContent = isOff && r.pending === null ? "--" : `${fmt(target)}°`;
 
-    if (paused) {
+    if (lockedPause) {
       f.micon.setAttribute("icon", "mdi:pause");
       f.mode.title = "Paused by the garden doors";
     } else {
@@ -608,7 +668,7 @@ class HeatingControlCard extends HTMLElement {
 
     // While paused the pause/resume scripts own the thermostat: a change
     // here would be overwritten by the resume snapshot.
-    const locked = unavailable || paused || isOff;
+    const locked = unavailable || lockedPause || isOff;
     f.down.disabled = locked || num(target) === null || num(target) <= min;
     f.up.disabled = locked || num(target) === null || num(target) >= max;
     f.mode.disabled = unavailable;
@@ -616,7 +676,7 @@ class HeatingControlCard extends HTMLElement {
     const cls = f.row.classList;
     cls.toggle("win", isWinner && !paused && !isOff && !unavailable);
     cls.toggle("along", !isWinner && below && ctx.heating && !isOff && !paused && !unavailable);
-    cls.toggle("heat", !isOff && !paused && !unavailable);
+    cls.toggle("heat", !isOff && !lockedPause && !unavailable);
     cls.toggle("off", isOff);
     cls.toggle("paused", paused);
     cls.toggle("pending", r.pending !== null);
@@ -709,9 +769,9 @@ const SCHEMA = [
 
 const LABELS = {
   title: "Title",
-  thermostats: "Thermostats (empty: all virtual thermostats)",
+  thermostats: "Rooms (empty: all rooms of Cloudless Multiroom Thermostat)",
   show_off: "Show rooms that are off",
-  heating_area: "Winning room (delta temperature or area sensor)",
+  heating_area: "Winning room sensor (only without the integration)",
   boiler: "Central heating active",
   hot_water: "Hot water active",
   flame: "Flame on",
@@ -799,7 +859,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "heating-control-card",
   name: "Heating Control Card",
-  description: "All virtual thermostats, the room the boiler heats for, boiler status and pressure warning.",
+  description: "Every room of Cloudless Multiroom Thermostat, the room the boiler heats for, boiler status and pressure warning.",
   preview: true,
 });
 
