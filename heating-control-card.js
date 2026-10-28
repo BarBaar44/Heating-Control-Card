@@ -6,13 +6,18 @@
  * Header: the room the boiler is heating for (the winner), its current and
  * target temperature, what the boiler is doing, schedule and pressure notes.
  * Rows: one per room climate, each with room temperature, target with - and
- * +, Heat/Off, and its role (heating, heating along, reached, off, paused).
+ * +, Heat/Off, and its role (heating, heating along, waiting, reached, off,
+ * paused).
  *
  * What it reads from that backend:
  *  - The room climates of the Cloudless Multiroom Thermostat integration:
  *    the single source of truth per room, the card only ever writes here.
- *    Their attributes say which room is the winner (is_winner) and why a
- *    room is paused (paused_reason: window, away, manual).
+ *    Their attributes say which room is the winner (is_winner), each room's
+ *    role (role: winner, passenger, calls_for_heat, waiting, reached,
+ *    paused, off) and why a room is paused (paused_reason: window, away,
+ *    manual). A waiting room is below target but does not drive the heat
+ *    source: it only heats along while another room drives, so it is never
+ *    shown as demand.
  *  - Without the integration: climate.virtual_thermostat_* and
  *    sensor.delta_temperature, JSON {"area","target","curr","delta"} (a plain
  *    area sensor such as sensor.virtual_heating_area works too).
@@ -50,12 +55,14 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.8.0";
+const VERSION = "0.9.0";
 
 const INTEGRATION = "cloudless_multiroom_thermostat";
 const PREFIX = "climate.virtual_thermostat_";
 const LIVING_ROOM = "climate.virtual_thermostat_living_room";
 const LIVING_ROOM_PAUSED = "input_boolean.garden_heating_paused";
+// Room roles the integration sets (attribute `role`, thermostat v1.1.0+).
+const ROLES = ["winner", "passenger", "calls_for_heat", "waiting", "reached", "paused", "off"];
 
 const DEFAULTS = {
   title: "Heating",
@@ -191,6 +198,8 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .row.win .rrole { color: var(--hc-fire); font-weight: 600; }
   .row.along .rrole { color: var(--hc-heat); }
   .row.paused .rrole { color: var(--hc-heat); }
+  /* Waiting: below target, but nothing heats it; calmer than Calls for heat. */
+  .row.waiting .rrole { opacity: .7; }
   /* Room temperature is the main reading: larger and bolder than the target. */
   .rcur { display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 20px; font-weight: 600; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
   .rcur ha-icon { --mdi-icon-size: 16px; --mdc-icon-size: 16px; color: var(--secondary-text-color); }
@@ -358,6 +367,15 @@ class HeatingControlCard extends HTMLElement {
     return reason ? String(reason) : null;
   }
 
+  // The integration's own role for a room, or null (YAML setup, older
+  // integration, unknown value): then the card works the role out itself.
+  _roleOf(room) {
+    if (!room.integration) return null;
+    const s = this._state(room.entity);
+    const role = s && s.attributes.role;
+    return ROLES.includes(role) ? role : null;
+  }
+
   // The area name HA's area_name() gives: the entity's own area, else its device's.
   _areaOf(entityId) {
     const h = this._hass;
@@ -479,6 +497,11 @@ class HeatingControlCard extends HTMLElement {
     // Every room in heat held off by the integration (window, away, manual)
     const allPaused = anyHeat && inHeat.every((r) => r.integration && this._pauseReason(r));
     const awayAll = allPaused && inHeat.every((r) => this._pauseReason(r) === "away");
+    // Integration roles: a calling room asks for the heat source, a waiting
+    // room does not (it only heats along), so only the first counts as demand.
+    const calling = inHeat.filter((r) => this._roleOf(r) === "calls_for_heat");
+    const waiting = inHeat.filter((r) => this._roleOf(r) === "waiting");
+    const roomsText = (list, one, many) => (list.length === 1 ? `${list[0].label} ${one}` : `${list.length} rooms ${many}`);
     const modText = mod !== null ? ` · ${Math.round(mod)}%` : "";
     let activity;
     if (offline) activity = "thermostat offline";
@@ -499,8 +522,11 @@ class HeatingControlCard extends HTMLElement {
         : !anyHeat || chDisabled ? "Heating off"
         : awayAll ? "Heating off · nobody home"
         : allPaused ? "Heating paused"
+        : calling.length ? roomsText(calling, "calls for heat", "call for heat")
+        : waiting.length ? "Heating off"
         : "All rooms at target";
-      e.sub.textContent = activity.charAt(0).toUpperCase() + activity.slice(1);
+      const note = !chDisabled && !calling.length && waiting.length ? roomsText(waiting, "waiting", "waiting") : "";
+      e.sub.textContent = [activity.charAt(0).toUpperCase() + activity.slice(1), note].filter(Boolean).join(" · ");
     }
     if (fault) {
       e.winner.textContent = "Boiler fault";
@@ -636,9 +662,11 @@ class HeatingControlCard extends HTMLElement {
     const max = a.max_temp ?? 30;
     const below = num(a.temperature) !== null && num(a.current_temperature) !== null && num(a.current_temperature) < num(a.temperature);
     const isWinner = ctx.winner === room.entity;
+    // The integration's role when it sends one, else worked out here.
+    const own = this._roleOf(room);
 
     // Role in the two-tier model
-    let role, roleIcon;
+    let role, roleIcon, along = false;
     if (unavailable) { role = "Unavailable"; roleIcon = "mdi:help-circle-outline"; }
     else if (lockedPause) { role = "Paused · garden doors open"; roleIcon = "mdi:door-open"; }
     else if (paused && reason === "window") { role = "Paused · window open"; roleIcon = "mdi:window-open-variant"; }
@@ -648,7 +676,14 @@ class HeatingControlCard extends HTMLElement {
     else if (isWinner && ctx.heating) { role = "Heating"; roleIcon = "mdi:fire"; }
     else if (isWinner && ctx.pumping) { role = "Pumping"; roleIcon = "mdi:pump"; }
     else if (isWinner) { role = "Calls for heat"; roleIcon = "mdi:fire"; }
-    else if (below && ctx.heating) { role = "Heating along"; roleIcon = "mdi:radiator"; }
+    else if (own === "waiting") { role = "Waiting for heat"; roleIcon = "mdi:timer-sand"; }
+    else if (own === "calls_for_heat") { role = "Calls for heat"; roleIcon = "mdi:thermometer-chevron-up"; }
+    else if (own === "reached") { role = "Reached"; roleIcon = "mdi:check"; }
+    // The heat source runs for another room; the boiler entities only say
+    // whether it fires or pumps (a switch heat source has neither: heating).
+    else if (own === "passenger" && ctx.pumping) { role = "Pumping along"; roleIcon = "mdi:pump"; }
+    else if (own === "passenger") { role = "Heating along"; roleIcon = "mdi:radiator"; along = true; }
+    else if (below && ctx.heating) { role = "Heating along"; roleIcon = "mdi:radiator"; along = true; }
     else if (below && ctx.pumping) { role = "Pumping along"; roleIcon = "mdi:pump"; }
     else if (below) { role = "Calls for heat"; roleIcon = "mdi:thermometer-chevron-up"; }
     else { role = "Reached"; roleIcon = "mdi:check"; }
@@ -675,7 +710,8 @@ class HeatingControlCard extends HTMLElement {
 
     const cls = f.row.classList;
     cls.toggle("win", isWinner && !paused && !isOff && !unavailable);
-    cls.toggle("along", !isWinner && below && ctx.heating && !isOff && !paused && !unavailable);
+    cls.toggle("along", along);
+    cls.toggle("waiting", role === "Waiting for heat");
     cls.toggle("heat", !isOff && !lockedPause && !unavailable);
     cls.toggle("off", isOff);
     cls.toggle("paused", paused);

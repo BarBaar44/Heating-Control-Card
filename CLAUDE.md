@@ -12,9 +12,12 @@ the multi-room heating integration. It still supports the original YAML setup; t
 | `README.md` | User docs, also the HACS info page. Keep the option table in sync with `DEFAULTS`. |
 | `shot.png` | README screenshot, linked by absolute raw URL so it renders in HACS. |
 | `examples.png` | README grid of six states (one room and all rooms; hot/cold water, heating, fault), rendered from the real card in headless Chromium with stub `ha-card`/`ha-icon` (`@mdi/js` paths) and a fake `hass`. Regenerate when the look changes. |
-| `multi-room.png` | README example with six rooms covering every row role (Heating, Heating along, Pumping, Pumping along, Reached, Off, Paused) and the low pressure warning. Same render setup; regenerate with `examples.png`. |
+| `multi-room.png` | README example, three integration cards side by side covering every row role (Heating, Heating along, Pumping, Pumping along, Waiting for heat, Reached, Off, Paused), the low pressure warning and "Heating off · Hallway waiting". Same render setup (the `ha-card`/`ha-icon` stubs need their own shadow styles, page CSS does not reach into the card); regenerate with `examples.png`. |
 | `multi-room-card.png` | One six-room card at 372 px card width, rendered 2x, page width 412 px like `shot.png`. Used in the BarBaar44/thermostat README with `<img width="412">` so it shows at the same scale as `shot.png`. |
-| `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only. Must stay green. |
+| `tests/heating-control-card.test.js` | jsdom tests (`npm install`, `npm test`): integration roles, header texts, YAML setup, batched taps. |
+| `package.json` | Dev only: jsdom for the tests. The card has no dependencies. |
+| `CHANGELOG.md` | One `## vX.Y.Z` section per release. |
+| `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only, plus the tests. Must stay green. |
 
 Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/BarBaar44/EV-Trip-Card): header comment with repo URL and MIT, `VERSION` constant, `DEFAULTS` block, console banner, README with feature bullets, Install line, option/default table, Licence.
 
@@ -24,10 +27,11 @@ The card writes to **one thing only**: the room climates (`climate.set_temperatu
 
 **Integration rooms** are climates whose `hass.entities[id].platform` is `cloudless_multiroom_thermostat`. Without a `thermostats` list the card shows those; only when there are none it falls back to `climate.virtual_thermostat_*`. For integration rooms:
 
+- the row role comes from the attribute `role` (thermostat v1.1.0+): `winner`, `passenger`, `calls_for_heat`, `waiting`, `reached`, `paused`, `off`, set by `controller.role()` in BarBaar44/thermostat. `waiting` means below target but "Drives the heat source" is off and nothing else needs heat: shown as "Waiting for heat" (dimmed, `mdi:timer-sand`, class `waiting`) and **never counted as demand**. `passenger` is "Heating along" or "Pumping along" (boiler entities only pick the word; with none, e.g. a switch heat source, it is Heating along). A missing or unknown `role` (older integration, YAML setup) falls back to the card's own logic (winner, below `temperature`, boiler activity);
 - the winner is the room with attribute `is_winner: true` (header temps from `current_temperature` and `effective_target`); `heating_area` is ignored;
 - `paused_reason` (`window`, `away`, `manual`) gives role "Paused · window open", "Paused · nobody home" or "Paused". The row stays editable (the integration keeps the room's target during a pause); only a `paused` entity locks a row;
 - the label is the room's friendly name (the room name), not its area;
-- header without a winner: "Heating off · nobody home" when every room in heat is paused for away, "Heating paused" when every room in heat is paused for any reason.
+- header without a winner: "Heating off · nobody home" when every room in heat is paused for away, "Heating paused" when every room in heat is paused for any reason, "<Room> calls for heat" / "N rooms call for heat" for `calls_for_heat` rooms, else "Heating off" with "· <Room> waiting" / "· N rooms waiting" after the activity when rooms are `waiting`.
 
 | Option | Default entity | Used for |
 |---|---|---|
@@ -53,11 +57,11 @@ Priority, highest first: **offline** → **fault** → winner / no winner text.
 - Offline: `boiler` or `flame` entity is `unavailable`/`unknown`. Header "Thermostat offline", grey `mdi:lan-disconnect`; fault and pressure stay quiet; rows keep working.
 - Fault: red border, pulsing banner, red header "Boiler fault". OpenTherm sends no display code (e.g. C1 51): **do not add code interpretation**, the banner says to check the boiler display.
 - Activity: hot water wins (combi). Then CH + flame = heating (with %), CH without flame = pumping, else idle. No flame entity: CH active counts as heating.
-- No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the `ch_enabled` switch is off, "Heating off · nobody home" / "Heating paused" (integration rooms, see above), otherwise "All rooms at target".
+- No winner: "Hot water" during DHW, "Heating off" when no room is in heat or the `ch_enabled` switch is off, "Heating off · nobody home" / "Heating paused" / calls for heat / waiting (integration rooms, see above), otherwise "All rooms at target".
 - Icon: offline > fault > pressure warning > `mdi:fire` (heating) > `mdi:pump` > `mdi:shower-head` (DHW, amber) > `mdi:water-pump` (cold water flowing, light blue, class `coldwater`, taps open the flow sensor) > `mdi:fire-off`.
 - Animations: flame flicker (`.burning`), falling water shower (`.dhw`) and a drop falling from the water pump spout (`.coldwater`: the icon's own drop is clipped away and `#drip` falls instead) run only while that icon is shown, never over fault or pressure icons (`:not(.fault):not(.alert)`), and stop under `prefers-reduced-motion`.
 
-Row roles: Heating / Pumping (winner), Heating along / Pumping along (below target while the boiler runs for another room), Calls for heat, Reached, Off, Paused, Unavailable.
+Row roles: Heating / Pumping (winner), Heating along / Pumping along (below target while the boiler runs for another room), Calls for heat, Waiting for heat (integration only), Reached, Off, Paused, Unavailable.
 
 ## Behaviour to keep
 
@@ -69,13 +73,13 @@ Row roles: Heating / Pumping (winner), Heating along / Pumping along (below targ
 
 ## Releasing
 
-1. Only when the owner says to release: bump `VERSION` in `heating-control-card.js`, commit, push to `main`, check the Validate run is green.
+1. Only when the owner says to release: bump `VERSION` in `heating-control-card.js` and add the `CHANGELOG.md` section, in a PR (never push to `main`); check the Validate run is green.
 2. The owner creates the GitHub release and its `vX.Y.Z` tag on `main` (Claude sessions here cannot create releases or push tags). Supply release notes in Markdown with Changed / Added sections.
 3. Changes the owner marks as "no release yet" go to `main` without a version bump.
 
 ## Testing
 
-No test suite. Before pushing: `node --check heating-control-card.js`, then load the file in jsdom with a fake `hass` (`states`, `entities`, `devices`, `areas`, `callService`) and check header text, icon, card classes and row roles for: heating, pumping, hot water, hot water + CH, idle, offline, fault, low/high pressure, garden pause, schedule off, explicit list, legacy `climate`, and that taps send one batched call. With integration rooms also: only its climates are listed and named after the room, winner from `is_winner` (a leftover `sensor.delta_temperature` is ignored), window / away / manual pause texts with the row still editable, all rooms away, and an off room showing Off.
+`npm test` runs `tests/heating-control-card.test.js`; add a case for every behaviour change. It covers what used to be checked by hand: `node --check heating-control-card.js`, then the file in jsdom with a fake `hass` (`states`, `entities`, `devices`, `areas`, `callService`) and check header text, icon, card classes and row roles for: heating, pumping, hot water, hot water + CH, idle, offline, fault, low/high pressure, garden pause, schedule off, explicit list, legacy `climate`, and that taps send one batched call. With integration rooms also: only its climates are listed and named after the room, winner from `is_winner` (a leftover `sensor.delta_temperature` is ignored), window / away / manual pause texts with the row still editable, all rooms away, an off room showing Off, and every `role` value (waiting alone, waiting with hot water or CH switched off, passenger heating, pumping or with no boiler entities, calls for heat without a winner, a role that disagrees with `temperature`, no or an unknown role). Note: the file has top-level `const`s, so it cannot be loaded twice as a classic script.
 
 ## Not possible
 
