@@ -1,0 +1,67 @@
+name: Release
+
+# On a vX.Y.Z tag: check it against VERSION, run the tests and publish the
+# GitHub release with that version's CHANGELOG.md section as notes. If the
+# release already exists (made by hand in the GitHub UI), its notes are
+# filled in from the CHANGELOG.
+# Run it by hand (Actions > Release > Run workflow) with a tag to (re)write
+# the notes of an existing release from the CHANGELOG on main.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag, e.g. v0.9.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match VERSION in heating-control-card.js
+        if: github.event_name == 'push'
+        run: |
+          FILE_VERSION=$(grep -oP 'const VERSION = "\K[^"]+' heating-control-card.js)
+          echo "file: $FILE_VERSION  tag: ${TAG#v}"
+          test "$FILE_VERSION" = "${TAG#v}"
+
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'push'
+        with:
+          node-version: 22
+      - if: github.event_name == 'push'
+        run: npm install --no-audit --no-fund && npm test
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v tag="## ${TAG}" '
+            $0 == tag { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "No section '## ${TAG}' in CHANGELOG.md"; exit 1; }
+          cat notes.md
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          files: heating-control-card.js
+          body_path: notes.md
+
+      - name: Update notes of an existing release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$TAG" --notes-file notes.md

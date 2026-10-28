@@ -17,6 +17,7 @@ the multi-room heating integration. It still supports the original YAML setup; t
 | `tests/heating-control-card.test.js` | jsdom tests (`npm install`, `npm test`): integration roles, header texts, YAML setup, batched taps. |
 | `package.json` | Dev only: jsdom for the tests. The card has no dependencies. |
 | `CHANGELOG.md` | One `## vX.Y.Z` section per release. |
+| `.github/workflows/release.yml` | On a `vX.Y.Z` tag: checks it against `VERSION`, runs the tests, publishes the release with that version's `CHANGELOG.md` section as notes (fills in the notes if the release was already made by hand). Run by hand with a tag to rewrite an existing release's notes from the CHANGELOG on `main`. |
 | `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only, plus the tests. Must stay green. |
 
 Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/BarBaar44/EV-Trip-Card): header comment with repo URL and MIT, `VERSION` constant, `DEFAULTS` block, console banner, README with feature bullets, Install line, option/default table, Licence.
@@ -74,7 +75,7 @@ Row roles: Heating / Pumping (winner), Heating along / Pumping along (below targ
 ## Releasing
 
 1. Only when the owner says to release: bump `VERSION` in `heating-control-card.js` and add the `CHANGELOG.md` section, in a PR (never push to `main`); check the Validate run is green.
-2. The owner creates the GitHub release and its `vX.Y.Z` tag on `main` (Claude sessions here cannot create releases or push tags). Supply release notes in Markdown with Changed / Added sections.
+2. The owner pushes the `vX.Y.Z` tag on `main` (`git pull && git tag vX.Y.Z && git push origin vX.Y.Z`); `release.yml` publishes the release with the CHANGELOG section as notes. Claude sessions here cannot push tags or create releases. Never add to a CHANGELOG section that is already tagged; start the next one.
 3. Changes the owner marks as "no release yet" go to `main` without a version bump.
 
 ## Testing
