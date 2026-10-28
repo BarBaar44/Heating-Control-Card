@@ -1,7 +1,7 @@
 # Heating Control Card: notes for working on this repo
 
 HACS dashboard card (Lovelace) for [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat),
-the multi-room heating integration. It still supports the original YAML setup (until the owner's own house has migrated). Owner: BarBaar44 (Bb).
+the multi-room heating integration. It still supports the original YAML setup; the owner's own house moved to the integration on 2026-10-28. Owner: BarBaar44 (Bb).
 
 ## Files
 
