@@ -204,7 +204,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .mode { width: 32px; height: 32px; border-radius: 50%; background: var(--hc-soft); color: var(--secondary-text-color); }
   .mode ha-icon { --mdc-icon-size: 18px; }
   .row.heat .mode { background: var(--hc-heat); color: #fff; }
-  .row.paused .mode { color: var(--hc-heat); opacity: 1; cursor: pointer; }
+  .row.paused .mode { background: var(--hc-soft); color: var(--hc-heat); opacity: 1; cursor: pointer; }
   .row.unavailable { opacity: .45; }
   /* One room: its Heat/Off sits in the header, the row loses that column. */
   #hmode { display: none; flex: none; }
@@ -212,7 +212,7 @@ ${Object.values(COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .single .row { grid-template-columns: minmax(0,3fr) minmax(56px,2fr) auto; }
   .single .row .mode { display: none; }
   #hmode.heat { background: var(--hc-heat); color: #fff; }
-  #hmode.paused { color: var(--hc-heat); opacity: 1; cursor: pointer; }
+  #hmode.paused { background: var(--hc-soft); color: var(--hc-heat); opacity: 1; cursor: pointer; }
   .empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
 
   @keyframes shower {
