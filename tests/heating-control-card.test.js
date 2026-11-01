@@ -229,6 +229,33 @@ test("off room shows Off; only integration climates listed, named after the room
   assert.strictEqual(v.winner, "Heating off");
 });
 
+test("thermostats list: header speaks for the whole house, rows stay the listed rooms", () => {
+  const BED = "climate.master_bedroom";
+  const rooms = {
+    [LIVING]: room("Living Room", 19.2, 10, { role: "off", is_winner: false }, "off"),
+    [BED]: room("Master Bedroom", 16.6, 21, { role: "winner", is_winner: true, effective_target: 21 }),
+  };
+  const c = render(intHass(rooms, "heating", { mod: 30 }), { thermostats: [LIVING] });
+  const v = read(c);
+  assert.deepStrictEqual(v.rows.map((r) => r.name), ["Living Room"]);
+  assert.strictEqual(v.rows[0].role, "Off");
+  assert.strictEqual(v.winner, "Master Bedroom");
+  assert.strictEqual(v.sub, "16.6° → 21.0° · boiler heating · 30%");
+  assert.strictEqual(v.icon, "mdi:fire");
+  assert(v.cls("single"));
+  assert.strictEqual(c._winnerEntity, BED);
+  // A room that is not listed calls for heat or waits: the header names it too.
+  rooms[BED] = room("Master Bedroom", 16.6, 21, { role: "calls_for_heat", is_winner: false });
+  assert.strictEqual(read(render(intHass(rooms), { thermostats: [LIVING] })).winner, "Master Bedroom calls for heat");
+  rooms[BED] = room("Master Bedroom", 16.6, 21, { role: "waiting", is_winner: false });
+  const v3 = read(render(intHass(rooms), { thermostats: [LIVING] }));
+  assert.strictEqual(v3.winner, "Heating off");
+  assert.strictEqual(v3.sub, "Boiler idle · Master Bedroom waiting");
+  // Everything off: still Heating off.
+  rooms[BED] = room("Master Bedroom", 16.6, 21, { role: "off", is_winner: false }, "off");
+  assert.strictEqual(read(render(intHass(rooms), { thermostats: [LIVING] })).winner, "Heating off");
+});
+
 /* ---------------- YAML setup (never sees role) ---------------- */
 
 const VT_LIV = "climate.virtual_thermostat_living_room";

@@ -418,6 +418,23 @@ class HeatingControlCard extends HTMLElement {
     return list;
   }
 
+  // The header speaks for the whole house. With integration rooms it reads
+  // every room of the integration, also the ones a `thermostats` list leaves
+  // out, so a card that shows only the living room still says the boiler is
+  // heating for the bedroom. The rows stay the listed rooms.
+  _houseRooms(rooms) {
+    if (!this._config.thermostats || !rooms.some((r) => r.integration)) return rooms;
+    const listed = new Set(rooms.map((r) => r.entity));
+    const extra = Object.keys(this._hass.states)
+      .filter((id) => id.startsWith("climate.") && !listed.has(id) && this._isIntegration(id))
+      .map((entity) => {
+        const s = this._state(entity);
+        const label = (s && s.attributes.friendly_name) || this._areaOf(entity) || entity;
+        return { entity, integration: true, paused: null, label };
+      });
+    return rooms.concat(extra);
+  }
+
   // Integration rooms say themselves which one wins (is_winner). Otherwise
   // sensor.delta_temperature holds JSON; a plain area sensor holds the name.
   _winnerInfo(rooms) {
@@ -460,6 +477,7 @@ class HeatingControlCard extends HTMLElement {
     const c = this._config;
     const e = this._el;
     const rooms = this._rooms();
+    const house = this._houseRooms(rooms);
 
     const boilerState = this._state(c.boiler);
     const flameState = this._state(c.flame);
@@ -481,15 +499,15 @@ class HeatingControlCard extends HTMLElement {
     const highP = !isNaN(p) && c.pressure_max != null && p > Number(c.pressure_max);
     const fault = !offline && this._on(c.fault);
 
-    const w = this._winnerInfo(rooms);
+    const w = this._winnerInfo(house);
     const winRoom = w.entity
-      ? rooms.find((r) => r.entity === w.entity)
+      ? house.find((r) => r.entity === w.entity)
       : w.area ? rooms.find((r) => this._areaOf(r.entity) === w.area || r.label === w.area) : null;
     this._winnerEntity = winRoom ? winRoom.entity : null;
 
     // Header
     e.title.textContent = c.title || "";
-    const inHeat = rooms.filter((r) => {
+    const inHeat = house.filter((r) => {
       const s = this._state(r.entity);
       return s && s.state !== "off" && !BAD.includes(s.state);
     });
