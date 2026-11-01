@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+* **Header with a `thermostats` list:** the header now speaks for every room of Cloudless Multiroom Thermostat, not only the listed ones. A card that shows only the living room said "Heating off" while the boiler was heating for the bedroom; it now says "Master Bedroom · 16.6° → 21.0° · boiler heating", and also names a room that is not listed when it calls for heat or waits. The rows are still only the listed rooms.
+
 ## v0.9.0
 
 ### Added
