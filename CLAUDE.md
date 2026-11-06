@@ -1,6 +1,6 @@
 # Heating Control Card: notes for working on this repo
 
-HACS dashboard card (Lovelace) for [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat),
+Dashboard card (Lovelace) for [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat) (renamed from BarBaar44/thermostat; older notes and code comments say thermostat), installed from the Marketplace (HA 2026.11+, replaced HACS, reads the same `hacs.json`) or HACS,
 the multi-room heating integration. It still supports the original YAML setup; the owner's own house moved to the integration on 2026-10-28. Owner: BarBaar44 (Bb).
 
 ## Files
@@ -9,7 +9,7 @@ the multi-room heating integration. It still supports the original YAML setup; t
 |---|---|
 | `heating-control-card.js` | The whole card: plain custom elements, no build step, no dependencies. Card plus visual editor (`ha-form`). |
 | `hacs.json` | HACS manifest (`filename`, `render_readme`, minimum HA version). |
-| `README.md` | User docs, also the HACS info page. Keep the option table in sync with `DEFAULTS`. |
+| `README.md` | User docs, also the Marketplace / HACS info page. Keep the option table in sync with `DEFAULTS`. |
 | `shot.png` | README screenshot, linked by absolute raw URL so it renders in HACS. |
 | `examples.png` | README grid of six states (one room and all rooms; hot/cold water, heating, fault), rendered from the real card in headless Chromium with stub `ha-card`/`ha-icon` (`@mdi/js` paths) and a fake `hass`. Regenerate when the look changes. |
 | `multi-room.png` | README example, three integration cards side by side covering every row role (Heating, Heating along, Pumping, Pumping along, Waiting for heat, Reached, Off, Paused), the low pressure warning and "Heating off · Hallway waiting". Same render setup (the `ha-card`/`ha-icon` stubs need their own shadow styles, page CSS does not reach into the card); regenerate with `examples.png`. |

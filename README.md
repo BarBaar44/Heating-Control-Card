@@ -2,7 +2,7 @@
 
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
-One Lovelace card for every room of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat) and the boiler behind them.
+One Lovelace card for every room of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat) and the boiler behind them.
 
 * **Header:** the room the boiler is heating for right now (the winner), with its current and target temperature and what the boiler does ("Office · 18.0° → 20.0° · boiler heating · 45%"). With no winner it says "Heating off" when no room is set to heat or central heating is switched off, "Heating off · nobody home" when everybody is away, "Heating paused" when every heating room is held off, "Office calls for heat" when a room asks for heat but the boiler has not started for it yet, "All rooms at target" when rooms are in heat but none needs more, or "Hot water" while the boiler runs for the tap. A room that is only waiting (see below) is never counted as demand: with nothing else heating the header says "Heating off" and the line under it "Boiler idle · Hallway waiting".
 * **Boiler activity:** CH active alone does not mean the burner fires, so the flame sensor decides:
@@ -40,15 +40,17 @@ Tap a room name for its thermostat, the header for the winning room, the flame f
 
 ## How it fits the integration
 
-The card writes only to the room climates of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/thermostat), the single source of truth per room. Everything downstream (TRVs, the overshoot buffer for the winner, the boiler setpoint) is the integration's job, exactly as with any other change to a room.
+The card writes only to the room climates of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat), the single source of truth per room. Everything downstream (TRVs, the overshoot buffer for the winner, the boiler setpoint) is the integration's job, exactly as with any other change to a room.
 
 The rooms tell the card which one is the winner, each room's role and why a room is paused, so no extra sensor is needed. With an integration older than v1.1.0 (no `role` attribute) the card works the roles out itself.
 
-**Without the integration** the card still works with the original YAML setup ([thermostat v1.1.0](https://github.com/BarBaar44/thermostat/tree/v1.1.0); later versions dropped it): it then shows every `climate.virtual_thermostat_*`, takes the winner from `sensor.delta_temperature` (JSON `area`, `target`, `curr`; matched to a row by the thermostat's area), and locks the living room while `input_boolean.garden_heating_paused` is on, because the pause and resume scripts own it then.
+**Without the integration** the card still works with the original YAML setup ([thermostat v1.1.0](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/tree/v1.1.0); later versions dropped it): it then shows every `climate.virtual_thermostat_*`, takes the winner from `sensor.delta_temperature` (JSON `area`, `target`, `curr`; matched to a row by the thermostat's area), and locks the living room while `input_boolean.garden_heating_paused` is on, because the pause and resume scripts own it then.
 
 ## Install
 
-HACS > three dots > Custom repositories > add `https://github.com/BarBaar44/Heating-Control-Card`, type **Dashboard**. Install, then reload the browser.
+**Home Assistant 2026.11 and newer (Marketplace):** **Settings > Marketplace > Add from link**, enter `BarBaar44/Heating-Control-Card` and select **Add** (the Marketplace may ask you to connect GitHub first). Open **Heating Control Card**, select **Install** and confirm, then reload the browser. The Marketplace adds the dashboard resource itself, unless your resources are managed in YAML: then the install dialog shows the line to add. An install from HACS moves to the Marketplace by itself when you update Home Assistant to 2026.11.
+
+**Older versions (HACS):** HACS > three dots > Custom repositories > add `https://github.com/BarBaar44/Heating-Control-Card`, type **Dashboard**. Install, then reload the browser.
 
 ## Use
 
@@ -89,7 +91,7 @@ All options are optional:
 | `on_mode` | `heat` |
 | `colors` | see below |
 
-A room's `paused` is an entity that locks its row while on; without the integration the living room's defaults to `input_boolean.garden_heating_paused`. The boiler entity defaults are the names of an ESPHome OpenTherm thermostat ([`thermostat.yaml`](https://github.com/BarBaar44/thermostat/blob/main/thermostat.yaml)); point them at your own. Set any entity option to `null` to switch that part off. The card also has a visual editor in the dashboard UI.
+A room's `paused` is an entity that locks its row while on; without the integration the living room's defaults to `input_boolean.garden_heating_paused`. The boiler entity defaults are the names of an ESPHome OpenTherm thermostat ([`thermostat.yaml`](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/blob/main/thermostat.yaml)); point them at your own. Set any entity option to `null` to switch that part off. The card also has a visual editor in the dashboard UI.
 
 ### Colors
 
