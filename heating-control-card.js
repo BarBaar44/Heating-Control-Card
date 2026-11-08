@@ -55,7 +55,7 @@
  * https://github.com/BarBaar44/Heating-Control-Card  (MIT)
  */
 
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 const INTEGRATION = "cloudless_multiroom_thermostat";
 const PREFIX = "climate.virtual_thermostat_";
