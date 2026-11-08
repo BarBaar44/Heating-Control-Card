@@ -48,6 +48,10 @@ The rooms tell the card which one is the winner, each room's role and why a room
 
 ## Install
 
+[![Open your Home Assistant instance and open this repository.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=BarBaar44&repository=Heating-Control-Card&category=plugin)
+
+The button opens the card in your Home Assistant (the Marketplace on 2026.11 and newer, HACS on older versions), ready to install; reload the browser afterwards. Or by hand:
+
 **Home Assistant 2026.11 and newer (Marketplace):** **Settings > Marketplace > Add from link**, enter `BarBaar44/Heating-Control-Card` and select **Add** (the Marketplace may ask you to connect GitHub first). Open **Heating Control Card**, select **Install** and confirm, then reload the browser. The Marketplace adds the dashboard resource itself, unless your resources are managed in YAML: then the install dialog shows the line to add. An install from HACS moves to the Marketplace by itself when you update Home Assistant to 2026.11.
 
 **Older versions (HACS):** HACS > three dots > Custom repositories > add `https://github.com/BarBaar44/Heating-Control-Card`, type **Dashboard**. Install, then reload the browser.

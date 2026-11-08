@@ -1,7 +1,7 @@
 /*
  * Heating Control Card
  * One Lovelace card for every virtual thermostat in the house and the boiler
- * behind them, built for https://github.com/BarBaar44/thermostat
+ * behind them, built for https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat
  *
  * Header: the room the boiler is heating for (the winner), its current and
  * target temperature, what the boiler is doing, schedule and pressure notes.
