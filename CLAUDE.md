@@ -18,7 +18,7 @@ the multi-room heating integration. It still supports the original YAML setup; t
 | `package.json` | Dev only: jsdom for the tests. The card has no dependencies. |
 | `CHANGELOG.md` | One `## vX.Y.Z` section per release. |
 | `.github/workflows/release.yml` | On a `vX.Y.Z` tag: checks it against `VERSION`, runs the tests, publishes the release with that version's `CHANGELOG.md` section as notes (fills in the notes if the release was already made by hand). Run by hand with a tag to rewrite an existing release's notes from the CHANGELOG on `main`. |
-| `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, ignoring `brands topics` only, plus the tests. Must stay green. |
+| `.github/workflows/validate.yml` | `hacs/action`, category `plugin`, with no ignored checks (the catalog does not accept them), plus the tests. Must stay green. |
 
 Repo layout and README style follow [BarBaar44/EV-Trip-Card](https://github.com/BarBaar44/EV-Trip-Card): header comment with repo URL and MIT, `VERSION` constant, `DEFAULTS` block, console banner, README with feature bullets, Install line, option/default table, Licence.
 

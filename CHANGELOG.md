@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+* **Marketplace readiness:** the README has a button that opens the card in the Marketplace (or HACS) ready to install, the HACS validation runs without ignored checks (the catalog does not accept ignored checks), and the file header links to the renamed integration repository.
+
 ## v0.9.1
 
 ### Fixed
