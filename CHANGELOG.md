@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+* **Moved into Cloudless Multiroom Thermostat.** The card now ships with the integration and is maintained there; this repository gets no further updates. The card registers in the card picker only once, also when the bundled copy loaded first.
+
 ## v0.9.2
 
 ### Changed
