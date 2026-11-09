@@ -1,5 +1,9 @@
 # Heating Control Card
 
+> [!IMPORTANT]
+> **This card now ships with [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat)** and is maintained there. The integration serves it and adds it to your dashboards by itself, so you no longer install it separately. Already have this card installed? Remove it in HACS or the Marketplace and its dashboard resource; your dashboards keep working, the card type `custom:heating-control-card` is the same. Details: [docs/card.md](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/blob/main/docs/card.md). This repository gets no further updates.
+
+
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
 One Lovelace card for every room of [Cloudless Multiroom Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat) and the boiler behind them.
@@ -37,6 +41,7 @@ With several thermostats every room shows its role, the room the boiler heats fo
 ![Heating Control Card with several rooms](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room.png)
 
 Tap a room name for its thermostat, the header for the winning room, the flame for the boiler.
+
 
 ## How it fits the integration
 

@@ -909,8 +909,9 @@ if (!customElements.get("heating-control-card-editor")) {
   customElements.define("heating-control-card-editor", HeatingControlCardEditor);
 }
 
+// Once, also when the copy bundled with the integration loaded first.
 window.customCards = window.customCards || [];
-window.customCards.push({
+if (!window.customCards.some((c) => c.type === "heating-control-card")) window.customCards.push({
   type: "heating-control-card",
   name: "Heating Control Card",
   description: "Every room of Cloudless Multiroom Thermostat, the room the boiler heats for, boiler status and pressure warning.",
